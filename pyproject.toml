@@ -103,13 +103,15 @@ select = ["E", "F", "W", "I"]
 
 # E501 (line-too-long) is DISABLED, and the reason is recorded rather than left
 # as a bare entry. Measured on this tree at the default width: 552 violations,
-# and 57 even at 120 columns (re-measured 2026-09-01, identical under both
-# ruff 0.14.6 and 0.16.4, so the count is a property of this tree's prose, not
-# of the linter version. It was 533 at introduction; the rise to 552 is this
-# repo's prose accumulating on the base branch since, not a regression).
-# Essentially all of them are prose -- this repository deliberately writes
-# long single-line paragraphs in comments and docstrings, because that prose
-# is where its measurements and rationale live, and
+# and 57 even at 120 columns -- measured 2026-09-01 under ruff 0.16.4,
+# identical under 0.14.6, so the count is a property of this tree's prose, not
+# of the linter version. The introducing commit (a36eb2b) claimed 533; that
+# figure could not be reproduced -- re-measured here, a36eb2b's own tree reads
+# 537 under both ruff versions, and its parent commit reads 538. The rise from
+# 537 to 552 since is this repo's prose accumulating on the base branch, not a
+# regression. Essentially all of the current 552 are prose -- this repository
+# deliberately writes long single-line paragraphs in comments and docstrings,
+# because that prose is where its measurements and rationale live, and
 # ci/tests/test_stable_anchor_citations.py PARSES those chunks as its corpus.
 # Reflowing 552 lines of it would be a large diff through text other guards
 # read, in exchange for a property that is a preference rather than a defect.
