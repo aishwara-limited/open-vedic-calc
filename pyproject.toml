@@ -102,14 +102,18 @@ target-version = "py311"
 select = ["E", "F", "W", "I"]
 
 # E501 (line-too-long) is DISABLED, and the reason is recorded rather than left
-# as a bare entry. Measured on this tree at the default width: 533 violations,
-# and 57 even at 120 columns. Essentially all of them are prose -- this
-# repository deliberately writes long single-line paragraphs in comments and
-# docstrings, because that prose is where its measurements and rationale live,
-# and ci/tests/test_stable_anchor_citations.py PARSES those chunks as its
-# corpus. Reflowing 533 lines of it would be a large diff through text other
-# guards read, in exchange for a property that is a preference rather than a
-# defect. Line length is the one pycodestyle rule that cannot catch a mistake.
+# as a bare entry. Measured on this tree at the default width: 552 violations,
+# and 57 even at 120 columns (re-measured 2026-09-01, identical under both
+# ruff 0.14.6 and 0.16.4, so the count is a property of this tree's prose, not
+# of the linter version. It was 533 at introduction; the rise to 552 is this
+# repo's prose accumulating on the base branch since, not a regression).
+# Essentially all of them are prose -- this repository deliberately writes
+# long single-line paragraphs in comments and docstrings, because that prose
+# is where its measurements and rationale live, and
+# ci/tests/test_stable_anchor_citations.py PARSES those chunks as its corpus.
+# Reflowing 552 lines of it would be a large diff through text other guards
+# read, in exchange for a property that is a preference rather than a defect.
+# Line length is the one pycodestyle rule that cannot catch a mistake.
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
