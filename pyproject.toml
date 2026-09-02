@@ -106,8 +106,9 @@ select = ["E", "F", "W", "I"]
 # majority of them code rather than reflowable comments or docstrings.
 # Enforcing it would mean a repository-wide reformat with no correctness
 # benefit. The count is deliberately NOT recorded: recount it starting with
-# `uv sync --frozen --extra dev` (a plain `uv sync` resolves ruff from PATH
-# instead of the pin) then
+# `uv sync --frozen --extra dev` (without `--extra dev` no ruff is installed,
+# and a following `uv run --frozen ruff` silently uses whatever ruff is on
+# PATH) then
 # `uv run --frozen ruff check --select E501 --statistics .` (add
 # `--line-length 120` for the count at 120 columns). For a cross-version check
 # that touches neither the venv nor the lock:
