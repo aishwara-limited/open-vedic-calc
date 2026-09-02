@@ -101,21 +101,18 @@ target-version = "py311"
 # part the exact `ruff==` pin removes.
 select = ["E", "F", "W", "I"]
 
-# E501 (line-too-long) is DISABLED, and the reason is recorded rather than left
-# as a bare entry. Measured on this tree at the default width: 552 violations,
-# and 57 even at 120 columns -- measured 2026-09-01 under ruff 0.16.4,
-# identical under 0.14.6, so the count is a property of this tree's prose, not
-# of the linter version. The introducing commit (a36eb2b) claimed 533; that
-# figure could not be reproduced -- re-measured here, a36eb2b's own tree reads
-# 537 under both ruff versions, and its parent commit reads 538. The rise from
-# 537 to 552 since is this repo's prose accumulating on the base branch, not a
-# regression. Essentially all of the current 552 are prose -- this repository
-# deliberately writes long single-line paragraphs in comments and docstrings,
-# because that prose is where its measurements and rationale live, and
-# ci/tests/test_stable_anchor_citations.py PARSES those chunks as its corpus.
-# Reflowing 552 lines of it would be a large diff through text other guards
-# read, in exchange for a property that is a preference rather than a defect.
-# Line length is the one pycodestyle rule that cannot catch a mistake.
+# E501 (line-too-long) is DISABLED. This repository carries hundreds of
+# pre-existing over-length lines, the large majority of them code rather
+# than reflowable comments or docstrings (measured 2026-09-02 by the
+# independent reviewer; re-measure freely, but do not print a count into
+# this file -- nothing here would keep it true). Enforcing it would mean a
+# repository-wide reformat with no correctness benefit. The count is
+# deliberately NOT recorded: anyone who needs it recounts with
+# `uv run --frozen ruff check --select E501 --statistics .` (add
+# `--line-length 120` for the wider figure; `uvx ruff@<ver> check --select
+# E501 .` for a cross-version check that touches neither the venv nor the
+# lock). Line length is the one pycodestyle rule that cannot catch a
+# mistake.
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
