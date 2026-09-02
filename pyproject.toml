@@ -102,16 +102,17 @@ target-version = "py311"
 select = ["E", "F", "W", "I"]
 
 # E501 (line-too-long) is DISABLED. This repository carries hundreds of
-# pre-existing over-length lines at ruff's default 88-column width, the
-# large majority of them code rather than reflowable comments or
-# docstrings. Enforcing it would mean a repository-wide reformat with no
-# correctness benefit. The count is deliberately NOT recorded: recount it
-# starting with `uv sync --frozen --extra dev` (a plain `uv sync` resolves
-# ruff from PATH instead of the pin) then `uv run --frozen ruff check
-# --select E501 --statistics .` (add `--line-length 120` for the wider
-# figure). For a cross-version check that touches neither the venv nor the
-# lock: `uvx ruff@0.14.6 check --select E501 --statistics .` -- any
-# version other than the pinned one.
+# pre-existing over-length lines at ruff's default 88-column width, the large
+# majority of them code rather than reflowable comments or docstrings.
+# Enforcing it would mean a repository-wide reformat with no correctness
+# benefit. The count is deliberately NOT recorded: recount it starting with
+# `uv sync --frozen --extra dev` (a plain `uv sync` resolves ruff from PATH
+# instead of the pin) then
+# `uv run --frozen ruff check --select E501 --statistics .` (add
+# `--line-length 120` for the count at 120 columns). For a cross-version check
+# that touches neither the venv nor the lock:
+# `uvx ruff@0.14.6 check --select E501 --statistics .` -- any version other
+# than the pinned one.
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
