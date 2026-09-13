@@ -54,7 +54,7 @@ dev = [
     # a red build on an unrelated PR, and a new rule arriving unannounced is a
     # moving part in a gate. dependabot's `pip` ecosystem bumps it, which is the
     # moment to read what the new rules do.
-    "ruff==0.16.4",
+    "ruff==0.16.6",
     # ci/tests/test_environment_convergence.py parses uv.lock to compare the
     # RESOLVED set against what is installed. stdlib tomllib arrives in 3.11,
     # which .python-version now pins — but requires-python still admits 3.10
