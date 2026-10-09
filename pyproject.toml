@@ -54,7 +54,7 @@ dev = [
     # a red build on an unrelated PR, and a new rule arriving unannounced is a
     # moving part in a gate. dependabot's `pip` ecosystem bumps it, which is the
     # moment to read what the new rules do.
-    "ruff==0.16.4",
+    "ruff==0.16.9",
     # ci/tests/test_environment_convergence.py parses uv.lock to compare the
     # RESOLVED set against what is installed. stdlib tomllib arrives in 3.11,
     # which .python-version now pins — but requires-python still admits 3.10
@@ -90,7 +90,8 @@ target-version = "py311"
 # with --fix and stop reading it.
 #
 # WHAT "E" ACTUALLY BUYS HERE, measured rather than assumed. Under ruff 0.14.6
-# (re-measured unchanged under 0.16.4 at the bump to that version)
+# (re-measured unchanged under 0.16.4 and again under 0.16.9 at the bumps to
+# those versions)
 # the pycodestyle WHITESPACE rules -- E1xx, E2xx, E3xx, including E225
 # missing-whitespace-around-operator -- are PREVIEW-ONLY and are not enabled by
 # `select = ["E"]`. Measured: `x=1` and `y = ( 1, 2 )` pass under `--select E`
