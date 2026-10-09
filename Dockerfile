@@ -25,19 +25,24 @@
 # build reproducible, the tag is what the updater compares to decide a newer
 # release exists and what makes a bump legible in a diff.
 #
-# Digest verified 2026-09-01 against the GHCR registry API's
-# Docker-Content-Digest header for this tag (the 0.12.5 digest it replaces had
-# been resolved 2026-08-16 and cross-checked against three sources:
-#   docker buildx imagetools inspect ghcr.io/astral-sh/uv:<tag>
+# uv 0.12.23 digest verified 2026-10-09 against two sources, agreeing:
+#   docker buildx imagetools inspect ghcr.io/astral-sh/uv:0.12.23
 #   the GHCR registry API's Docker-Content-Digest header for that tag
-#   docker manifest inspect ghcr.io/astral-sh/uv:<tag>
-# — all agreeing). It is the multi-arch INDEX digest, so it resolves on every
-# build platform — this pin changes no bytes today, it stops them moving
-# unrecorded tomorrow.
+# (`docker manifest inspect` could not be used from the verifying host: its
+# blob fetch was refused, so it is not counted as a third source.) It is the
+# multi-arch INDEX digest (application/vnd.oci.image.index.v1+json), so it
+# resolves on every build platform; its children at that time were
+#   linux/amd64  sha256:dd2385ac82b9aff6489344ec2b22916db986eb135454d030bce3038c7598a689
+#   linux/arm64  sha256:8ef5ea0964b4a59c40d12775168fe55b679f6e8c170d23afa9f9176aeacff71b
+# recorded for audit only — never pin a per-platform child. The 0.12.7 digest
+# this replaces (sha256:95f2aa1f…) still resolves for its own tag at the
+# registry, so the move is a version bump, not a re-tag. The pin stops the
+# bytes moving unrecorded; the four `astral-sh/setup-uv` `version:` inputs in
+# .github/workflows move with it (ci/tests/test_environment_convergence.py).
 #
 # ci/tests/test_dockerfile_image_pins.py is the guard on this shape.
 # ---------------------------------------------------------------------------
-FROM ghcr.io/astral-sh/uv:0.12.7@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945 AS uv
+FROM ghcr.io/astral-sh/uv:0.12.23@sha256:61d393e44e249f2e4b526b6c7ddcecce245946826e608e11c93ad4f5bba55b21 AS uv
 
 # ---------------------------------------------------------------------------
 # Stage 1 — the Swiss ephemeris data files.

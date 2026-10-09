@@ -67,7 +67,7 @@ jobs:
       # uv it resolves and tests with had better be the uv that builds it.
       - uses: astral-sh/setup-uv@v10.2.0
         with:
-          version: "0.12.7"
+          version: "0.12.23"
           enable-cache: false
       # `--frozen` installs uv.lock as committed and never reads pyproject.toml,
       # so it cannot see a lock left stale by a dependency edit (measured — see
