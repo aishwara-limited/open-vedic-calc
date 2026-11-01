@@ -42,7 +42,7 @@
 #
 # ci/tests/test_dockerfile_image_pins.py is the guard on this shape.
 # ---------------------------------------------------------------------------
-FROM ghcr.io/astral-sh/uv:0.12.23@sha256:61d393e44e249f2e4b526b6c7ddcecce245946826e608e11c93ad4f5bba55b21 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
 
 # ---------------------------------------------------------------------------
 # Stage 1 — the Swiss ephemeris data files.
