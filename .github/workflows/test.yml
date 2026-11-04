@@ -117,11 +117,12 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
-          # Read from .python-version, never inline. uv.lock FORKS at
-          # python_full_version 3.11 (numpy 2.2.6/2.4.6, timezonefinder
-          # 8.2.0/8.2.5), so the interpreter is what collapses the lock to a
-          # single resolve — a second declaration of it is a second chance to
-          # test one side of that fork while shipping the other.
+          # Read from .python-version, never inline. The interpreter decides
+          # what installs from the lock — the wheels, the marker-gated
+          # packages, and the side of any interpreter fork (uv.lock forked at
+          # python_full_version 3.11 until requires-python was raised to the
+          # pinned 3.11) — so a second declaration of it is a second chance to
+          # test one resolve while shipping another.
           python-version-file: .python-version
       - name: Install uv, at the version the shipped images install
         # THE INSTALLER IS PART OF THE RESOLVE. This used to be a bare
@@ -290,8 +291,8 @@ jobs:
           # Same single declaration as the `test` job above. The goldens were
           # recorded on the pinned interpreter against the pinned pyswisseph,
           # so letting the accuracy gate pick its own interpreter would have it
-          # certify a resolve nothing ships. (Measured from uv.lock: pyswisseph
-          # 2.10.3.2 publishes wheels for cp310/cp311 only, so anything newer
+          # certify a resolve nothing ships. (Measured from uv.lock: the only
+          # pyswisseph 2.10.3.2 wheels it records are cp311, so anything newer
           # additionally falls back to an sdist build here.)
           python-version-file: .python-version
 

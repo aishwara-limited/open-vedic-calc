@@ -21,24 +21,34 @@ charset-normalizer, click, idna, pytz, typing-extensions, websockets,
 annotated-types, annotated-doc). So the suite that gates every merge was
 certifying a dependency set no deployment ever ran.
 
-THE LOCK FORKS ON THE INTERPRETER
---------------------------------
-``uv.lock`` is not one resolve — it FORKS. Measured: of 73 locked package
-names, exactly two resolve to more than one version, both split on the same
-boundary, ``python_full_version`` 3.11:
+THE LOCK FORKED ON THE INTERPRETER
+---------------------------------
+A universal ``uv.lock`` is not necessarily one resolve — it can FORK on the
+interpreter, and this one did while ``requires-python`` read ``>=3.10``.
+Measured then: of 73 locked dependency names, exactly two resolved to more
+than one version, both split on the same boundary, ``python_full_version``
+3.11:
 
     numpy            2.2.6  (< 3.11)   /  2.4.6  (>= 3.11)
     timezonefinder   8.2.0  (< 3.11)   /  8.2.5  (>= 3.11)
 
-So "the locked set" does not name a single set of versions until the
-interpreter is fixed, and a base-image tag edit changes what installs while
-``pyproject.toml`` and ``uv.lock`` stay byte-identical.
-``.github/dependabot.yml`` watches the ``docker`` ecosystem weekly precisely
-so the pinned base image gets CVE-driven bumps, so that edit arrives on its
-own schedule.
+The ``< 3.11`` side was a resolve for an interpreter nothing here builds or
+tests, and it was also the side the security updater resolved on — see
+``test_requires_python_floor_is_the_pinned_interpreter`` below.
+``requires-python`` now reads exactly ``>=`` the pinned interpreter, and the
+regenerated lock holds 73 entries (72 dependencies and the project itself),
+each at one version, with no ``resolution-markers`` at all. It can fork again
+the day a dependency's newest release drops an interpreter ``requires-python``
+still admits, and wherever it forks "the locked set" does not name a single
+set of versions until the interpreter is fixed. A base-image tag edit also
+changes the interpreter an image installs for — and with it the wheels and
+the marker-gated packages — while ``pyproject.toml`` and ``uv.lock`` stay
+byte-identical. ``.github/dependabot.yml`` watches the ``docker`` ecosystem
+weekly precisely so the pinned base image gets CVE-driven bumps, so that edit
+arrives on its own schedule.
 
-WHAT THE FORK DOES *NOT* ESTABLISH — READ BEFORE RE-ARGUING IT
---------------------------------------------------------------
+WHAT THE FORK DID *NOT* ESTABLISH — READ BEFORE RE-ARGUING IT
+-------------------------------------------------------------
 An earlier revision of this file claimed the consequence was numeric: that
 ``numpy`` sits in the served compute path via
 ``jhora/horoscope/chart/strength.py`` (Shadbala/Bhavabala rounded and summed
@@ -74,7 +84,7 @@ Those two calls are one expression — the ``house_owners = np.where(...)``
 assignment in ``jhora/const.py``, an integer index extraction building a
 constant lookup table. Cited by symbol, not by line: it sits in a vendored
 dependency whose line numbers move with the pinned version. Whether crossing
-the fork perturbs it was measured rather than assumed in either direction: the
+the fork perturbed it was measured rather than assumed in either direction: the
 expression on the same table yields ``[2, 5, 3, 1, 0, 3, 5, 2, 4, 6, 6, 4]``
 under numpy 2.2.6 on python 3.10 and under numpy 2.4.6 on python 3.11, same
 values and same element types.
@@ -84,17 +94,20 @@ WHAT THIS GUARD ACTUALLY RESTS ON
 What the gating suite tests must be what ships — the 13-package divergence
 above. That is the whole of it, and it deliberately does not depend on the
 numpy question resolving either way. Two supporting reasons for declaring the
-interpreter in exactly one place: the fork leaves "the locked set" ambiguous
+interpreter in exactly one place: a fork leaves "the locked set" ambiguous
 while the interpreter floats, and reachability is a property of *today's*
 code, not a guarantee — the day something here calls into the dependency's own
 strength/ashtakavarga modules, or a new dependency puts float arithmetic on
-the served path, the fork stops being inert with nothing in the diff to
+the served path, a fork stops being inert with nothing in the diff to
 announce it.
 
 WHAT THIS GUARD ASSERTS
 -----------------------
 1. The running interpreter is the pinned one (``.python-version``) — because a
-   lock that forks is only one resolve once the interpreter is fixed.
+   lock that forks is only one resolve once the interpreter is fixed — and
+   ``requires-python`` is exactly ``>=`` that interpreter, with ``uv.lock``
+   resolved for the same range, so the lock is never resolved for, and no
+   updater resolves on, an interpreter nothing here runs.
 2. Every installed distribution matches what ``uv.lock`` resolves FOR THAT
    INTERPRETER, and the comparison provably included the pins named in
    ``_ACCURACY_CRITICAL`` below.
@@ -102,7 +115,8 @@ WHAT THIS GUARD ASSERTS
    its interpreter from ``.python-version`` — so the divergence cannot be
    reintroduced in a workflow edit.
 4. Both Dockerfiles' base images are on that same pinned interpreter — so the
-   base-image bump above cannot silently cross the fork.
+   base-image bump above cannot silently move the interpreter an image
+   installs for.
 5. The uv BUILD TOOL is one version across CI and both images, and no workflow
    installs it from a floating index resolve.
 6. Every job that installs the frozen lock also asserts the lock is FRESH.
@@ -186,22 +200,20 @@ import importlib.util
 import pathlib
 import re
 import sys
+import tomllib
 from importlib import metadata
 
 import pytest
 import yaml
-from packaging.markers import Marker
-from packaging.utils import canonicalize_name
 
-# `packaging` is deliberately NOT declared in the dev extras the way `tomli`
-# is: it is a hard dependency of pytest itself, so it cannot be absent in any
-# environment capable of running this file. `tomli` has no such relationship —
-# it arrived only transitively, via pip-audit — which is why that one is
-# declared explicitly in pyproject.toml.
-try:  # Python >= 3.11 — the interpreter this repo now pins
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10 — still within the requires-python floor
-    import tomli as tomllib
+# `packaging` is deliberately NOT declared in the dev extras: it is a hard
+# dependency of pytest itself, so it cannot be absent in any environment
+# capable of running this file. The TOML parser is stdlib `tomllib`, present on
+# every interpreter requires-python admits.
+from packaging.markers import Marker
+from packaging.specifiers import SpecifierSet
+from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 _LOCK = _REPO_ROOT / "uv.lock"
@@ -217,7 +229,8 @@ _DOCKERFILES = (_REPO_ROOT / "Dockerfile", _REPO_ROOT / "Dockerfile.test")
 #   pyswisseph, pyjhora  — MEASURED to move served numbers. The ephemeris
 #       itself, and the library owning the lunar-node and position-flag levers
 #       (the 576 flag word, the 1.98 deg node — see the project's CLAUDE.md).
-#   numpy, timezonefinder — the two packages uv.lock forks on at python 3.11.
+#   numpy, timezonefinder — the two packages uv.lock forked on at python 3.11
+#       while requires-python still admitted 3.10.
 #       Both are measured NOT to be reached by the served compute path as the
 #       code stands (docstring above). They stay pinned and asserted anyway:
 #       dropping a pin the moment you cannot prove harm is a pin that fails
@@ -335,9 +348,10 @@ def _pinned_python() -> tuple[int, int]:
         f"{_PYTHON_VERSION_FILE.name} is missing. It is the single declaration "
         "of the interpreter this project resolves against — uv reads it, "
         "actions/setup-python reads it via python-version-file, and the "
-        "Dockerfile base images are checked against it. Without it, uv.lock's "
-        "3.11 fork (numpy 2.2.6/2.4.6, timezonefinder 8.2.0/8.2.5) is "
-        "unresolved and 'the locked set' names two different sets of versions."
+        "Dockerfile base images and requires-python are checked against it. "
+        "Without it, nothing fixes the interpreter uv.lock is installed for, "
+        "and wherever the lock forks on the interpreter 'the locked set' names "
+        "more than one set of versions."
     )
     raw = _PYTHON_VERSION_FILE.read_text(encoding="utf-8").strip()
     match = re.fullmatch(r"(\d+)\.(\d+)(?:\.\d+)?", raw)
@@ -575,20 +589,81 @@ def _dockerfile_uv_versions() -> dict[str, str]:
 # 1 — the interpreter is the pinned one
 # ---------------------------------------------------------------------------
 def test_running_interpreter_matches_the_pinned_python_version() -> None:
-    """The lock forks at 3.11. Fixing the interpreter is what collapses it to a
-    single resolve — so an environment on any other minor version has installed
-    a different set of versions from the one that ships, however green it
-    looks."""
+    """The interpreter decides what installs from the lock: the wheels, every
+    marker-gated package, and the side of any interpreter fork. So an
+    environment on any other minor version has installed something other than
+    what ships, however green it looks."""
     expected = _pinned_python()
     actual = (sys.version_info.major, sys.version_info.minor)
     assert actual == expected, (
         f"this interpreter is {actual[0]}.{actual[1]}, but "
         f"{_PYTHON_VERSION_FILE.name} pins {expected[0]}.{expected[1]}. "
-        "uv.lock forks at python_full_version 3.11 — numpy resolves to 2.2.6 "
-        "below it and 2.4.6 at or above, timezonefinder to 8.2.0 and 8.2.5 — "
-        "so this environment has installed a resolve no deployment runs, and "
+        "The interpreter decides which wheels and marker-gated packages "
+        "install, and which side of any interpreter fork in uv.lock (it forked "
+        "at 3.11 until requires-python was raised to the pin), so this "
+        "environment has installed a resolve no deployment runs, and "
         "whatever it certifies is not what ships. Recreate the environment "
         "with `uv sync --frozen --extra dev` (uv reads .python-version)."
+    )
+
+
+def test_requires_python_floor_is_the_pinned_interpreter() -> None:
+    """``requires-python`` must read exactly ``>=`` the interpreter
+    ``.python-version`` pins, and ``uv.lock`` must have been resolved for it.
+
+    It is the range the universal lock is resolved FOR, and the interpreter an
+    automated dependency updater resolves ON. It used to read ``>=3.10`` while
+    every image, CI job and developer checkout here ran 3.11, and both of those
+    readings went wrong in measured ways. The lock carried a second resolve for
+    an interpreter nothing here builds or tests (numpy 2.2.6 and timezonefinder
+    8.2.0, below 3.11). And the security updater resolved on Python 3.10.20 and
+    reported ``security_update_not_possible`` for a vulnerable locked pin,
+    filelock 3.29.6, because the first release patching every advisory against
+    it, 4.2.1, requires Python >= 3.11 — so a vulnerable dependency stayed
+    locked on behalf of an interpreter that nothing runs.
+
+    A floor ABOVE the pinned interpreter fails the other way round: ``uv sync``
+    refuses the very interpreter every environment reads. So the floor is not
+    merely bounded by the pin, it IS the pin. Any other shape — a lower floor, a
+    second clause, a ceiling — is a separate decision, made by editing this
+    test deliberately rather than by editing one line of ``pyproject.toml``.
+    """
+    major, minor = _pinned_python()
+    expected = f">={major}.{minor}"
+    project = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))["project"]
+    declared = project.get("requires-python")
+    assert isinstance(declared, str) and declared.strip(), (
+        f"{_PYPROJECT.name} declares no [project].requires-python. Without it "
+        "uv resolves the lock for every interpreter it can imagine, and an "
+        "updater picks whichever it likes to resolve on."
+    )
+    clauses = list(SpecifierSet(declared))
+    print(
+        f"requires-python = {declared!r}; {_PYTHON_VERSION_FILE.name} pins "
+        f"{major}.{minor}; {len(clauses)} clause(s): {[str(c) for c in clauses]}"
+    )
+    is_the_pin = (
+        len(clauses) == 1
+        and clauses[0].operator == ">="
+        and Version(clauses[0].version) == Version(f"{major}.{minor}")
+    )
+    assert is_the_pin, (
+        f"{_PYPROJECT.name} declares requires-python = {declared!r}, but "
+        f"{_PYTHON_VERSION_FILE.name} pins {major}.{minor}, so it must read "
+        f"{expected!r}. A floor below the pin resolves uv.lock for an "
+        "interpreter nothing here builds or tests, and lets the security "
+        "updater resolve on it: measured, it resolved on Python 3.10.20 and "
+        "reported filelock's patched release (which requires >= 3.11) as "
+        "impossible to take. A floor above the pin makes `uv sync` refuse the "
+        "interpreter every environment reads."
+    )
+
+    locked = _lock_data().get("requires-python")
+    assert isinstance(locked, str) and SpecifierSet(locked) == SpecifierSet(declared), (
+        f"uv.lock was resolved for requires-python = {locked!r}, but "
+        f"{_PYPROJECT.name} declares {declared!r}. The lock is stale against "
+        "the manifest; regenerate it with `uv lock`, using the uv version the "
+        "Dockerfiles install."
     )
 
 
@@ -636,7 +711,7 @@ def test_installed_distributions_match_the_lock_for_this_interpreter() -> None:
         f"the accuracy-critical pins {missing_critical} were not compared. "
         "These are the ephemeris itself, the chart library that owns the "
         "lunar-node and position-flag levers, and the two packages uv.lock "
-        "forks on at python 3.11 — see _ACCURACY_CRITICAL above, where the "
+        "forked on at python 3.11 — see _ACCURACY_CRITICAL above, where the "
         "two groups are listed under deliberately different reasons. A "
         "convergence check that silently omits them is not a convergence "
         "check."
@@ -733,8 +808,8 @@ def test_every_workflow_job_that_runs_the_suite_installs_from_the_frozen_lock() 
                     f"{workflow}:{job_name} pins its interpreter inline "
                     f"({options.get('python-version')!r}) instead of reading "
                     f"{_PYTHON_VERSION_FILE.name}. A second declaration of the "
-                    "interpreter is a second chance to straddle uv.lock's 3.11 "
-                    "fork."
+                    "interpreter is a second chance to test a different resolve "
+                    "from the one that ships."
                 )
                 continue
             # Presence is not the property that matters — the VALUE is.
@@ -765,8 +840,8 @@ def test_every_workflow_job_that_runs_the_suite_installs_from_the_frozen_lock() 
 def test_dockerfile_base_images_are_the_pinned_python_version(
     dockerfile: pathlib.Path,
 ) -> None:
-    """A base-image bump changes the resolved dependency set with no diff in
-    pyproject.toml or uv.lock, so it must not be able to cross uv.lock's fork
+    """A base-image bump changes what the image installs with no diff in
+    pyproject.toml or uv.lock, so it must not be able to move the interpreter
     without also changing the pin every environment reads."""
     major, minor = _pinned_python()
     instructions = parse_dockerfile(dockerfile.read_text(encoding="utf-8"))
@@ -790,14 +865,15 @@ def test_dockerfile_base_images_are_the_pinned_python_version(
     wrong = [tag for tag in tags if not re.match(rf"^{major}\.{minor}(?:\.\d+)?(?:-|$)", tag)]
     assert not wrong, (
         f"{dockerfile.name} builds on python {wrong}, but "
-        f"{_PYTHON_VERSION_FILE.name} pins {major}.{minor}. uv.lock forks at "
-        "python_full_version 3.11: crossing it swaps numpy (2.2.6 <-> 2.4.6) "
-        "and timezonefinder (8.2.0 <-> 8.2.5) with no change to pyproject.toml "
-        "or uv.lock, so the image would ship a resolve nothing tested. "
-        "dependabot watches the docker ecosystem weekly, so this is a bump "
-        "that arrives on its own. Moving the interpreter is a deliberate, "
-        "separately-reviewed change that re-runs the Swiss goldens — not a "
-        "base-image tag edit."
+        f"{_PYTHON_VERSION_FILE.name} pins {major}.{minor}. Moving the "
+        "interpreter changes which wheels and marker-gated packages install "
+        "(and, wherever uv.lock forks on the interpreter, which versions) with "
+        "no change to pyproject.toml or uv.lock, so the image would ship a "
+        "resolve nothing tested. dependabot watches the docker ecosystem "
+        "weekly, so this is a bump that arrives on its own. Moving the "
+        "interpreter is a deliberate, separately-reviewed change that moves "
+        ".python-version and requires-python together and re-runs the Swiss "
+        "goldens — not a base-image tag edit."
     )
 
 

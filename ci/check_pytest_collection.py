@@ -123,13 +123,9 @@ import os
 import shlex
 import subprocess
 import sys
+import tomllib
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
-
-try:  # Python >= 3.11 — the interpreter this repo pins in .python-version
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10 — still within the requires-python floor
-    import tomli as tomllib
 
 try:
     import yaml
