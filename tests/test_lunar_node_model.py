@@ -438,10 +438,9 @@ def test_importing_the_package_is_what_pins_the_model() -> None:
 # The dependency pin — the default must not be able to move underneath the code
 # ---------------------------------------------------------------------------
 #
-# Textual parsing rather than a TOML parser: requires-python still admits 3.10
-# (before stdlib `tomllib`), and the same convention is already used by
-# ci/tests/test_ci_runs_gate_regression_suite.py rather than taking a dependency
-# to read two lines.
+# Textual parsing rather than a TOML parser: reading two lines needs none, and
+# the same convention is already used by
+# ci/tests/test_ci_runs_gate_regression_suite.py.
 
 _PYPROJECT_DEP = re.compile(r'^\s*"pyjhora(?P<specifier>[^"]*)"\s*,?\s*$', re.MULTILINE)
 _LOCK_REQUIREMENT = re.compile(

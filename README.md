@@ -14,19 +14,24 @@ uv sync --frozen        # the exact set in uv.lock, on the interpreter in .pytho
 uv run --frozen uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-`--frozen` is not incidental, and neither is the interpreter. `uv.lock` forks at
-Python 3.11 — `numpy` resolves to 2.2.6 below it and 2.4.6 at or above,
-`timezonefinder` to 8.2.0 and 8.2.5 — so "the locked set" does not name a single
-set of versions until the interpreter is fixed, and a base-image tag edit changes
-what installs while `pyproject.toml` and `uv.lock` stay byte-identical. That is
-why `.python-version` exists, and why the images, CI and the command above all
-read it instead of each naming a version of their own.
+`--frozen` is not incidental, and neither is the interpreter. A universal
+`uv.lock` can fork on the interpreter, and this one did at Python 3.11 while
+`requires-python` still admitted 3.10 — `numpy` resolved to 2.2.6 below it and
+2.4.6 at or above, `timezonefinder` to 8.2.0 and 8.2.5 — and wherever the lock
+forks, "the locked set" does not name a single set of versions until the
+interpreter is fixed. Even without a fork, the interpreter decides which wheels
+and marker-gated packages install, so a base-image tag edit changes what
+installs while `pyproject.toml` and `uv.lock` stay byte-identical. That is why
+`.python-version` exists, why `requires-python` is exactly `>=` that interpreter,
+and why the images, CI and the command above all read it instead of each naming
+a version of their own.
 
-Neither forking package is reached by the compute path as the code stands, which
-was measured rather than assumed — with the instrument proven live first, then
-counted across every route this service serves and the full test suite: numpy is
-called exactly twice, both times at import, building one constant lookup table
-inside a dependency — a table measured identical on both sides of the fork.
+Neither package that forked is reached by the compute path as the code stands,
+which was measured rather than assumed — with the instrument proven live first,
+then counted across every route this service serves and the full test suite:
+numpy is called exactly twice, both times at import, building one constant
+lookup table inside a dependency — a table measured identical on both sides of
+that fork.
 So the pin is here to install the set these values were recorded against, not to
 guard numpy arithmetic. A floating `pip install -e .` resolves whatever is newest
 today instead — measured, that differed from the shipped image on 13 packages

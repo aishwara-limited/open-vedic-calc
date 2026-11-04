@@ -38,17 +38,10 @@ from __future__ import annotations
 import fnmatch
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 import yaml
-
-# Same two-line form as ci/tests/test_environment_convergence.py: .python-version
-# pins 3.11 (stdlib tomllib), but requires-python still admits 3.10, where the
-# dev extras declare `tomli` for exactly this.
-try:  # Python >= 3.11 — the interpreter this repo pins
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10 — still within the requires-python floor
-    import tomli as tomllib
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _TEST_WORKFLOW = _REPO_ROOT / ".github" / "workflows" / "test.yml"

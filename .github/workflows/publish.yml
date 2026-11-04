@@ -50,9 +50,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           # One declaration of the interpreter, shared with test.yml and both
-          # Dockerfiles. uv.lock forks at python_full_version 3.11 (numpy
-          # 2.2.6/2.4.6, timezonefinder 8.2.0/8.2.5), so which interpreter this
-          # job runs decides which dependency SET it certifies — and this job
+          # Dockerfiles. Which interpreter this job runs decides which
+          # dependency SET it certifies (the wheels, the marker-gated packages,
+          # and the side of any interpreter fork — uv.lock forked at
+          # python_full_version 3.11 until requires-python was raised to the
+          # pinned 3.11) — and this job
           # is the one enforcing the coverage gate that authorises the image
           # build below, so it above all must certify the set that image ships.
           python-version-file: .python-version

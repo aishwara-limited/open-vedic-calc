@@ -8,7 +8,13 @@ version = "1.0.0"
 description = "Open Vedic Calc — generic BPHS calculation service"
 readme = "README.md"
 license = {text = "AGPL-3.0-only"}
-requires-python = ">=3.10"
+# The floor IS the interpreter .python-version pins, never below it. A lower
+# floor resolves uv.lock for an interpreter nothing here builds or tests, and
+# an automated updater resolves on that floor: measured, it resolved on Python
+# 3.10 and could not take filelock's first fully patched release, which
+# requires 3.11. Asserted by
+# ci/tests/test_environment_convergence.py::test_requires_python_floor_is_the_pinned_interpreter
+requires-python = ">=3.11"
 
 dependencies = [
     "pyswisseph==2.10.3.2",
@@ -55,16 +61,6 @@ dev = [
     # moving part in a gate. dependabot's `pip` ecosystem bumps it, which is the
     # moment to read what the new rules do.
     "ruff==0.16.9",
-    # ci/tests/test_environment_convergence.py parses uv.lock to compare the
-    # RESOLVED set against what is installed. stdlib tomllib arrives in 3.11,
-    # which .python-version now pins — but requires-python still admits 3.10
-    # (the lock is universal and forks at 3.11), so on a 3.10 environment the
-    # parser must still be declared; the `python_version < '3.11'` marker keeps
-    # it off the pinned 3.11 interpreter, which uses stdlib tomllib. It was
-    # already present transitively via pip-audit; relying on that would make
-    # this guard fail to collect the day that transitive changes, which is not
-    # a dependency relationship worth having implicit.
-    "tomli>=2.0.0; python_version < '3.11'",
 ]
 
 [tool.setuptools.packages.find]
