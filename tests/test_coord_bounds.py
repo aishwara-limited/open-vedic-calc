@@ -246,24 +246,23 @@ class TestOutOfRangeLagnaShuddhi:
 class TestValidExtremesChart:
     """Boundary-exact and real-world offsets must not be schema-rejected (422).
 
-    For latitude, the schema allows ge=-90, le=90. The compute layer (Swiss
-    Ephemeris Placidus house system) is undefined at high latitudes, so
-    latitude values above roughly 66° N/S may return 500 from the compute
-    layer — that is a domain limitation, NOT a schema rejection. The schema
-    tests here verify the important invariant: these values must NOT produce
-    a 422 (schema error). For tz and longitude we verify 200 because the
-    underlying computation handles the full range.
+    For latitude, the schema allows ge=-90, le=90, and the compute layer
+    answers the whole range: Placidus is undefined beyond the polar circles,
+    where the chart takes the equal-house fallback and says so in
+    house_system (tests/test_polar_latitude_chart.py pins that through the
+    route). So the poles must be 200, not merely "not 422". For tz and
+    longitude we verify 200 because the underlying computation handles the
+    full range.
     """
 
     def test_latitude_positive_90_schema_accepts(self):
-        # lat=90 is within the schema bounds (ge=-90, le=90). The response is
-        # 500 from the compute layer (polar Placidus undefined), not 422 from
-        # the schema. This test asserts the schema does NOT reject it.
-        assert _chart({"latitude": 90}) != 422
+        # lat=90 is within the schema bounds (ge=-90, le=90) and computes on the
+        # equal-house fallback.
+        assert _chart({"latitude": 90}) == 200
 
     def test_latitude_negative_90_schema_accepts(self):
         # Same reasoning as lat=90.
-        assert _chart({"latitude": -90}) != 422
+        assert _chart({"latitude": -90}) == 200
 
     def test_latitude_mid_range_passes(self):
         # A latitude in the computable range must return 200.

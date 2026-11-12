@@ -553,7 +553,7 @@ def test_every_graha_is_served_in_the_declared_frame() -> None:
 def test_a_served_chart_carries_the_declared_frame() -> None:
     """The whole chart path, not just the single-body boundary function.
 
-    ``Chart`` reaches swisseph through ``charts.rasi_chart -> drik.dhasavarga``,
+    ``Chart`` reaches swisseph through ``drik.dhasavarga``,
     a completely different call path from ``utils.graha_sidereal_longitude``. The
     lunar node model proved these paths can disagree: dhasavarga ignores
     ``const._RAHU`` and uses its own literal. Assert the served chart directly.

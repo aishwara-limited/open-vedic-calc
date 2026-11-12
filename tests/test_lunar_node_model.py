@@ -39,7 +39,7 @@ Measured while writing this, not read from documentation. `jhora.const._RAHU`
 (and its `_use_true_nodes_for_rahu_ketu` flag) is the lever everything about the
 library's naming suggests. Under pyjhora 4.8.6, setting it to the mean node and
 computing a real chart returned the TRUE node anyway, unchanged to the last
-digit: the chart path is `charts.rasi_chart` -> `drik.dhasavarga(jd, place, 1)`,
+digit: the chart path is `drik.dhasavarga(jd, place, 1)`,
 and dhasavarga declared `set_rahu_ketu_as_true_nodes=True` as a LITERAL parameter
 default, so it rebuilt the body table from that literal and never consulted the
 constants. `bphs_core.utils.apply_lunar_node_model` therefore pins the constants
@@ -211,7 +211,7 @@ def test_the_declaration_is_actually_carried_by_the_astronomy_library() -> None:
 def test_the_serving_path_agrees_with_the_declaration() -> None:
     """The lever that actually decides a served chart is the one worth pinning.
 
-    `charts.rasi_chart` calls `drik.dhasavarga(jd, place, 1)` without a node
+    `Chart._compute` calls `drik.dhasavarga(jd, place, 1)` without a node
     argument, so dhasavarga's own parameter default — a library literal this repo
     cannot set — is what every served Rahu and Ketu comes from. It ignores
     `const._RAHU` entirely. If a dependency bump ever moves that literal, the
