@@ -129,7 +129,11 @@ accuracy on days the files *do* cover, at HTTP 200. The upper bound is pulled in
 by 39 days so the whole of that reach still lands inside the data. The **lower**
 bound is not pulled in, deliberately — the backward search also leaves the files,
 but swisseph's fallback is measured *not* to persist in that direction, so
-narrowing there would cost ~4.5 years of range and buy nothing.
+narrowing there would cost ~4.5 years of range and buy nothing. A lagna-shuddhi
+scan computes one neighbouring day beyond each end of its request (an instant is
+scored against the sunrise-to-sunrise day that contains it, and night windows
+reach the next date), so it reads one day further each way; measured, that stays
+clean at both bounds and every timezone corner.
 
 Two of these fields used to fault rather than answer — `at_date=9999-01-01`
 raised an uncaught `swisseph.Error` and `reference_date=9999-01-01` an uncaught

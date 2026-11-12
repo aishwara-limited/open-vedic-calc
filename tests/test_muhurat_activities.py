@@ -2,8 +2,10 @@
 
 These exercise the data-driven ``_ACTIVITY_RULES`` table and the eclipse /
 Adhika-Maasa / Vishti / Durmuhurtam hard-veto gates directly, so every activity
-type is asserted individually. The hard-veto path returns before any ephemeris
-lookup, so the veto tests need no valid chart.
+type is asserted individually. The day-level vetoes return before any lagna
+lookup, so those tests need no valid chart; the Vishti veto is a KARANA, which
+is evaluated at the instant itself, so its tests use real instants whose karana
+is asserted independently from the ephemeris (tests/_panchanga_reference.py).
 
 Known reference dates (LAHIRI ayanamsa, the mode the service runs in):
   - Adhika Shravana 2023: 2023-07-18 .. 2023-08-16 (interior days are adhika).
@@ -19,11 +21,15 @@ from jhora.panchanga import drik
 
 from bphs_core import lagna_shuddhi as ls
 from bphs_core import muhurat
+from tests import _panchanga_reference as ref
 
 _DELHI = drik.Place("Delhi", 28.6, 77.2, 5.5)
 # A benign instant well clear of any inauspicious window in the synthetic days.
 _JD = swe.julday(2026, 5, 10, 6.0)
 _NOON = 6 * 60  # 06:00 in minutes-of-day
+# 2026-12-29 18:00 at UTC+5:30, inside a Vishti karana that began about 13:30
+# local (asserted from the ephemeris in the tests that use it).
+_VISHTI_JD = swe.julday(2026, 12, 29, 18.0 - 5.5)
 
 
 def _day(**over) -> dict:
@@ -115,10 +121,22 @@ def test_marriage_vetoed_on_visible_eclipse():
 
 
 def test_marriage_vetoed_on_vishti_karana():
-    day = _day(panchanga={"tithi": "x", "yogam": "Siddhi",
-                          "karana": "Vishti", "vaara": "Monday"})
-    score, detail = ls._score_instant(_JD, "Aries", "Mars", day, _NOON, "marriage")
+    assert ref.karana_at(_VISHTI_JD) == "Vishti"
+    score, detail = ls._score_instant(
+        _VISHTI_JD, "Aries", "Mars", _day(), _NOON, "marriage")
     assert score == 0.0 and detail["hard_excluded"]
+
+
+def test_vishti_veto_reads_the_instant_not_the_day_panchanga():
+    """A day panchanga naming Vishti does not veto an instant whose own karana
+    is not Vishti -- and a clean day panchanga does not shield one that is."""
+    assert ref.karana_at(_JD) not in ("Vishti", None)
+    vishti_day = _day(panchanga={"tithi": "x", "yogam": "Siddhi",
+                                 "karana": "Vishti", "vaara": "Monday"})
+    _, d_day = ls._score_instant(_JD, "Aries", "Mars", vishti_day, _NOON, "marriage")
+    assert not d_day["hard_excluded"]
+    _, d_inst = ls._score_instant(_VISHTI_JD, "Aries", "Mars", _day(), _NOON, "marriage")
+    assert d_inst["hard_excluded"]
 
 
 def test_travel_vetoes_eclipse_but_not_adhika():
@@ -131,12 +149,15 @@ def test_travel_vetoes_eclipse_but_not_adhika():
 
 
 def test_generic_never_hard_excluded_by_new_gates():
-    for flags in ({"is_eclipse_day": True}, {"is_adhik_maasa": True},
-                  {"panchanga": {"tithi": "x", "yogam": "Siddhi",
-                                 "karana": "Vishti", "vaara": "Monday"}}):
+    for flags in ({"is_eclipse_day": True}, {"is_adhik_maasa": True}):
         _, detail = ls._score_instant(
             _JD, "Aries", "Mars", _day(**flags), _NOON, "generic")
         assert not detail["hard_excluded"], flags
+    # ...and an instant inside a real Vishti karana is not vetoed for generic.
+    assert ref.karana_at(_VISHTI_JD) == "Vishti"
+    _, detail = ls._score_instant(
+        _VISHTI_JD, "Aries", "Mars", _day(), _NOON, "generic")
+    assert not detail["hard_excluded"]
 
 
 def test_surgery_vetoes_durmuhurtam_generic_does_not():

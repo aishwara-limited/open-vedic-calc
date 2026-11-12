@@ -304,20 +304,45 @@ def _score(day_data, activity="generic", **kw):
 
 
 class TestScoreInstantFailClosed:
-    def test_panchanga_none_tithi_not_suitable_and_penalised(self):
-        dd = _base_day_data(panchanga={"tithi": None, "yogam": "Siddhi",
-                                       "karana": "Bava", "vaara": "Tuesday"})
-        score_none, detail_none = _score(dd)
-        # A computed-suitable comparison day scores strictly higher.
-        score_ok, _ = _score(_base_day_data())
-        assert detail_none["panchanga_suitable"] is False
-        assert score_none < score_ok
+    def test_day_level_panchanga_names_are_not_scored(self):
+        """The tithi, karana and yoga are evaluated AT THE INSTANT, so a day
+        payload's names -- missing, Amavasya, Vishti or an avoided yoga -- move
+        neither the score nor the detail. (They used to be read for every
+        minute of the day; tests/test_muhurat_instant_panchanga.py pins the
+        instant values against the ephemeris.)"""
+        score_ok, detail_ok = _score(_base_day_data())
+        for panchanga in (
+            {"tithi": None, "yogam": None, "karana": None, "vaara": "Tuesday"},
+            {"tithi": "Krishna Amavasya", "yogam": "Vyatipata",
+             "karana": "Vishti", "vaara": "Tuesday"},
+        ):
+            # Marriage vetoes Vishti; the eclipse and Adhika Maasa flags are
+            # answered False so only the karana could veto this instant.
+            score, detail = _score(
+                _base_day_data(panchanga=panchanga, is_eclipse_day=False,
+                               is_adhik_maasa=False),
+                "marriage",
+            )
+            score_g, detail_g = _score(_base_day_data(panchanga=panchanga))
+            assert (score_g, detail_g) == (score_ok, detail_ok), panchanga
+            assert detail["tithi"] == detail_ok["tithi"]
+            assert detail["hard_excluded"] is False
 
-    def test_panchanga_none_yoga_not_suitable(self):
-        dd = _base_day_data(panchanga={"tithi": "Shukla Panchami", "yogam": None,
-                                       "karana": "Bava", "vaara": "Tuesday"})
-        _, detail = _score(dd)
-        assert detail["panchanga_suitable"] is False
+    def test_instant_limb_failure_raises(self, monkeypatch):
+        """A Sun or Moon longitude that cannot be computed fails the scorer
+        loudly: there is no 'could not be computed' arm left to score around
+        it, so a broken ephemeris can never be served as a ranked instant."""
+        import swisseph as swe
+        real = ls.drik.sidereal_longitude
+
+        def _moon_raises(jd, body, *a, **k):
+            if body == swe.MOON:
+                raise RuntimeError("ephemeris unavailable")
+            return real(jd, body, *a, **k)
+
+        monkeypatch.setattr(ls.drik, "sidereal_longitude", _moon_raises)
+        with pytest.raises(RuntimeError, match="ephemeris unavailable"):
+            _score(_base_day_data())
 
     def test_hard_gate_failed_excludes_instant(self):
         dd = _base_day_data(hard_gate_failed=True)
@@ -325,13 +350,21 @@ class TestScoreInstantFailClosed:
         assert detail["hard_excluded"] is True
         assert score == 0.0
 
-    def test_amavasya_tithi_not_suitable(self):
-        dd = _base_day_data(panchanga={"tithi": "Krishna Amavasya", "yogam": "Siddhi",
-                                       "karana": "Bava", "vaara": "Tuesday"})
-        score_ama, detail = _score(dd)
-        score_ok, _ = _score(_base_day_data())
+    def test_amavasya_tithi_not_suitable(self, monkeypatch):
+        """An instant in Amavasya is unsuitable and carries exactly the 0.10
+        penalty. The instant's limbs are fixed through the scorer's own seam
+        (the real InstantPanchanga shape) so the one difference is the tithi."""
+        def limbs(tithi):
+            return lambda jd: m.InstantPanchanga(tithi, "Bava", "Siddhi")
+
+        monkeypatch.setattr(ls, "panchanga_at_instant", limbs("Shukla Panchami"))
+        score_ok, detail_ok = _score(_base_day_data())
+        monkeypatch.setattr(ls, "panchanga_at_instant", limbs("Krishna Amavasya"))
+        score_ama, detail = _score(_base_day_data())
+        assert detail_ok["panchanga_suitable"] is True
         assert detail["panchanga_suitable"] is False
-        assert score_ama < score_ok
+        assert detail["tithi"] == "Krishna Amavasya"
+        assert score_ama == pytest.approx(score_ok - 0.10)
 
     def test_eclipse_none_excludes_samskara(self):
         """For an activity that excludes eclipse (e.g. marriage), an unknown
@@ -351,30 +384,22 @@ class TestScoreInstantFailClosed:
         _, detail = _score(dd, activity="marriage")
         assert detail["hard_excluded"] is True
 
-    def test_unknown_tara_penalised_and_caps_band(self, monkeypatch):
+    def test_unknown_tara_penalised_and_caps_band(self):
         """A failed Tara/Chandra compute (birth data present) penalises the score
         and the resulting sample caps at Fair via derive_band.
 
-        Only the MOON's computation is made to fail. The lagna-lord and
-        malefic limbs no longer swallow a compute failure — they PROPAGATE
-        (tests/test_graha_body_ids.py pins that), so a raise-on-every-body
-        patch would abort _score_instant before the balam limb this test is
-        about could run. The balam limbs keep their catch-into-'Unknown'
-        because 'Unknown' is a *visible* degradation (penalty + band cap),
-        not a silent one.
+        The failure is injected through the balam limb's OWN inputs -- a birth
+        nakshatra and a birth sign the tables do not hold -- rather than by
+        failing the Moon's ephemeris read. That read now also feeds the
+        tithi, karana and yoga at the instant, which propagate a failure (see
+        test_instant_limb_failure_raises), as the lagna-lord and malefic limbs
+        do (tests/test_graha_body_ids.py). The balam limbs keep their
+        catch-into-'Unknown' because 'Unknown' is a *visible* degradation
+        (penalty + band cap), not a silent one.
         """
-        import swisseph as swe
-        real = ls.drik.sidereal_longitude
-
-        def _moon_raises(jd, body, *a, **k):
-            if body == swe.MOON:
-                raise RuntimeError("ephemeris unavailable")
-            return real(jd, body, *a, **k)
-
-        monkeypatch.setattr(ls.drik, "sidereal_longitude", _moon_raises)
         dd = _base_day_data(is_eclipse_day=False, is_adhik_maasa=False)
         score, detail = _score(
-            dd, birth_nakshatra="Rohini", birth_moon_sign="Taurus",
+            dd, birth_nakshatra="NotANakshatra", birth_moon_sign="NotASign",
         )
         assert detail["tara_bala"] == "Unknown"
         assert detail["chandra_bala"] == "Unknown"
