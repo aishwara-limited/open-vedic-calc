@@ -151,65 +151,39 @@ class TestVasya:
 # ---------------------------------------------------------------------------
 
 class TestTara:
-    def test_both_favorable(self):
-        # Same nakshatra: count_ab == count_ba == 1, 1 % 9 == 1 (not fav) ...
-        # Pick a pair where both directions land favorable.
-        # Ashwini(0) & Punarvasu(6): count_ab = 7, count_ba = 27-6+1=22?
-        # Just search for a both-favorable pair deterministically.
-        favorable_pair = None
+    # The classical rule (Muhurta Chintamani, Vivaha-prakarana): count
+    # inclusively each way, divide by nine, and only the remainders 3, 5 and 7
+    # are inauspicious.  The exhaustive 27 x 27 check against that rule lives in
+    # tests/test_ashtakoota_classical_tables.py; these pin the two tiers and
+    # their interpretation strings.
+    _BAD = {3, 5, 7}
+
+    def _find(self, want_ab: bool, want_ba: bool):
         from bphs_core import utils
-        FAV = {2, 4, 6, 8, 0}
         for i, na in enumerate(utils.NAKSHATRAS):
             for j, nb in enumerate(utils.NAKSHATRAS):
                 cab = (j - i) % 27 + 1
                 cba = (i - j) % 27 + 1
-                if (cab % 9) in FAV and (cba % 9) in FAV:
-                    favorable_pair = (na, nb)
-                    break
-            if favorable_pair:
-                break
-        assert favorable_pair is not None
-        score, interp = compat._tara(*favorable_pair)  # _tara: `fav_ab and fav_ba` tier (3.0)
+                if ((cab % 9) not in self._BAD) == want_ab and \
+                        ((cba % 9) not in self._BAD) == want_ba:
+                    return na, nb
+        raise AssertionError("no such nakshatra pair")
+
+    def test_both_favorable(self):
+        score, interp = compat._tara(*self._find(True, True))  # _tara: `fav_ab and fav_ba` tier (3.0)
+        assert score == 3.0
+        assert "strong karmic resonance" in interp
+
+    def test_same_star_is_janma_and_favorable(self):
+        # Remainder 1 both ways (Janma) is not one of 3, 5, 7 -> full 3.0.
+        score, interp = compat._tara("Ashwini", "Ashwini")
         assert score == 3.0
         assert "strong karmic resonance" in interp
 
     def test_one_favorable(self):
-        from bphs_core import utils
-        FAV = {2, 4, 6, 8, 0}
-        mixed = None
-        for i, na in enumerate(utils.NAKSHATRAS):
-            for j, nb in enumerate(utils.NAKSHATRAS):
-                cab = (j - i) % 27 + 1
-                cba = (i - j) % 27 + 1
-                fav_ab = (cab % 9) in FAV
-                fav_ba = (cba % 9) in FAV
-                if fav_ab != fav_ba:
-                    mixed = (na, nb)
-                    break
-            if mixed:
-                break
-        assert mixed is not None
-        score, interp = compat._tara(*mixed)  # _tara: `fav_ab or fav_ba` tier (1.5)
+        score, interp = compat._tara(*self._find(True, False))  # _tara: one-favourable return (1.5)
         assert score == 1.5
         assert "mixed star compatibility" in interp
-
-    def test_neither_favorable(self):
-        from bphs_core import utils
-        FAV = {2, 4, 6, 8, 0}
-        bad = None
-        for i, na in enumerate(utils.NAKSHATRAS):
-            for j, nb in enumerate(utils.NAKSHATRAS):
-                cab = (j - i) % 27 + 1
-                cba = (i - j) % 27 + 1
-                if (cab % 9) not in FAV and (cba % 9) not in FAV:
-                    bad = (na, nb)
-                    break
-            if bad:
-                break
-        assert bad is not None
-        score, interp = compat._tara(*bad)
-        assert score == 0.0
-        assert "karmic challenges" in interp
 
 
 # ---------------------------------------------------------------------------
@@ -354,8 +328,9 @@ class TestBhakoot:
 
 class TestNadi:
     def test_same_nadi_dosha(self):
-        # Ashwini(idx0 -> Aadi) & Rohini(idx3 -> Aadi): same nadi -> dosha
-        score, interp = compat._nadi("Ashwini", "Rohini")
+        # Ashwini and Ardra are both Aadi (serpentine order: Aadi, Madhya,
+        # Antya, Antya, Madhya, Aadi) -> same nadi -> dosha.
+        score, interp = compat._nadi("Ashwini", "Ardra")
         assert score == 0.0
         assert "nadi dosha" in interp
 

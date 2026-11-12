@@ -1,6 +1,13 @@
 """
-BPHS Ashtakoota Milan (8-kuta marriage compatibility) and related calculations.
+Ashtakoota Milan (8-kuta marriage compatibility) and related calculations.
 All logic is deterministic — no LLM calls.
+
+BPHS does not define the koota tables. The eight-koota scheme, its 36 points
+and the Nadi, Gana and Tara rules below follow the marriage chapter
+(Vivaha-prakarana) of Muhurta Chintamani (Daivajna Rama, 1600 CE), as
+tabulated in common professional use. Each table cites its rule where it is
+defined, and tests/test_ashtakoota_classical_tables.py pins it, nakshatra by
+nakshatra, against the classical grouping typed in by hand.
 """
 from __future__ import annotations
 
@@ -15,7 +22,9 @@ from .dashas import vimshottari_mahadashas
 # Classical data tables
 # ---------------------------------------------------------------------------
 
-# Gana (temperament) of each nakshatra
+# Gana (temperament) of each nakshatra. Nine per gana (Muhurta Chintamani,
+# Vivaha-prakarana, gana-koota): the three Purvas and the three Uttaras are
+# all manushya, together with Bharani, Rohini and Ardra.
 NAKSHATRA_GANA: dict[str, str] = {
     "Ashwini": "deva",          "Bharani": "manushya",      "Krittika": "rakshasa",
     "Rohini": "manushya",       "Mrigashira": "deva",       "Ardra": "manushya",
@@ -25,16 +34,28 @@ NAKSHATRA_GANA: dict[str, str] = {
     "Vishakha": "rakshasa",     "Anuradha": "deva",          "Jyeshtha": "rakshasa",
     "Mula": "rakshasa",         "Purva Ashadha": "manushya", "Uttara Ashadha": "manushya",
     "Shravana": "deva",         "Dhanishta": "rakshasa",     "Shatabhisha": "rakshasa",
-    "Purva Bhadrapada": "manushya","Uttara Bhadrapada": "deva","Revati": "deva",
+    "Purva Bhadrapada": "manushya","Uttara Bhadrapada": "manushya","Revati": "deva",
 }
 
-# Nadi: derived by position in 27-cycle; index % 3 → 0=Aadi, 1=Madhya, 2=Antya
-_NADI_NAMES = ["Aadi", "Madhya", "Antya"]
+# Nadi (Muhurta Chintamani, Vivaha-prakarana, nadi-koota). The 27 nakshatras
+# run through the three nadis in a SERPENTINE order -- Aadi, Madhya, Antya,
+# Antya, Madhya, Aadi, repeated from Ashwini -- not a plain cycle of three:
+#   Aadi:   Ashwini, Ardra, Punarvasu, Uttara Phalguni, Hasta, Jyeshtha,
+#           Mula, Shatabhisha, Purva Bhadrapada
+#   Madhya: Bharani, Mrigashira, Pushya, Purva Phalguni, Chitra, Anuradha,
+#           Purva Ashadha, Dhanishta, Uttara Bhadrapada
+#   Antya:  Krittika, Rohini, Ashlesha, Magha, Swati, Vishakha,
+#           Uttara Ashadha, Shravana, Revati
+# A plain index % 3 agrees on the Madhya stars only and swaps Aadi and Antya
+# for Rohini, Ardra, Magha, Uttara Phalguni, Vishakha, Jyeshtha, Shravana and
+# Shatabhisha, which inverts the 8-point nadi koota for about one pair in five.
+_NADI_NAMES = ("Aadi", "Madhya", "Antya")
+_NADI_SERPENTINE = (0, 1, 2, 2, 1, 0)
 
 
 def _nakshatra_nadi(nak: str) -> str:
     idx = utils.NAKSHATRAS.index(nak)
-    return _NADI_NAMES[idx % 3]
+    return _NADI_NAMES[_NADI_SERPENTINE[idx % 6]]
 
 
 # Yoni: each nakshatra has an (animal, gender) pair
@@ -191,6 +212,14 @@ def _vasya(sign_a: str, sign_b: str) -> tuple[float, str]:
     return 0.0, "The partners' vasya groups have no natural affinity, requiring effort to maintain attraction."
 
 
+# Tara (Dina) koota (Muhurta Chintamani, Vivaha-prakarana, tara-koota): count
+# inclusively from one birth star to the other and divide by nine; only the
+# remainders 3 (Vipat), 5 (Pratyak) and 7 (Vadha) are inauspicious. Remainder
+# 1 (Janma: the same star, the 10th, the 19th) is NOT among them. Each
+# auspicious direction is worth 1.5 points.
+_TARA_INAUSPICIOUS = frozenset({3, 5, 7})
+
+
 def _tara(nak_a: str, nak_b: str) -> tuple[float, str]:
     idx_a = utils.NAKSHATRAS.index(nak_a)
     idx_b = utils.NAKSHATRAS.index(nak_b)
@@ -198,15 +227,16 @@ def _tara(nak_a: str, nak_b: str) -> tuple[float, str]:
     count_ab = (idx_b - idx_a) % 27 + 1
     count_ba = (idx_a - idx_b) % 27 + 1
 
-    FAVORABLE = {2, 4, 6, 8, 0}  # 0 == remainder when divisible by 9 (Param Mitra)
-    fav_ab = (count_ab % 9) in FAVORABLE
-    fav_ba = (count_ba % 9) in FAVORABLE
+    fav_ab = (count_ab % 9) not in _TARA_INAUSPICIOUS
+    fav_ba = (count_ba % 9) not in _TARA_INAUSPICIOUS
 
     if fav_ab and fav_ba:
         return 3.0, "Both birth-star counts fall in favorable tara positions, indicating strong karmic resonance."
-    if fav_ab or fav_ba:
-        return 1.5, "One tara direction is favorable; this pair has mixed star compatibility with some friction."
-    return 0.0, "Both tara counts land in unfavorable positions, suggesting karmic challenges to navigate together."
+    # At most one direction can be inauspicious: for two different stars the
+    # inclusive counts sum to 29, so the two remainders sum to 2 (mod 9), which
+    # no two of 3, 5 and 7 do; the same star gives remainder 1 both ways. A
+    # zero tara score therefore cannot arise under the classical rule.
+    return 1.5, "One tara direction is favorable; this pair has mixed star compatibility with some friction."
 
 
 def _yoni(nak_a: str, nak_b: str) -> tuple[float, str]:
