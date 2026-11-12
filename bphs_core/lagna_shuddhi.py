@@ -21,7 +21,7 @@ from typing import Literal
 import swisseph as swe
 from jhora.panchanga import drik
 
-from . import utils
+from . import event_clock, utils
 from .muhurat import _TARA_BALA_LEVELS, compute_muhurat_for_day
 
 logger = logging.getLogger(__name__)
@@ -947,16 +947,23 @@ def scan_lagna_shuddhi(
     end_date: str,
     activity: ActivityCategory = "generic",
     step_seconds: int = 60,
+    tz_name: str | None = None,
 ) -> dict:
     """
     Scan all candidate auspicious windows across the date range at `step_seconds`
     resolution. Returns the best-scored instant + a tolerance band + top samples.
 
+    ``tz_name`` is the event's IANA zone. When given, every scanned date reads
+    its local times on the offset in force on that date (``tz_offset`` is then
+    unused), and on a clock-change day no wall time that does not exist, is
+    ambiguous, or lies before the change is scored -- see bphs_core.event_clock.
+    Without it, ``tz_offset`` holds for every date, as it always has.
+
     Returns a dict with keys:
       best_instant, best_window, top_samples (list, up to 20 best)
     Each sample dict has all LagnaShuddhiSample fields.
     """
-    place = utils.make_place("scan", lat, lon, tz_offset)
+    clock = event_clock.make_clock(tz_offset, tz_name)
     step_mins = max(1, step_seconds // 60)
 
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
@@ -967,6 +974,8 @@ def scan_lagna_shuddhi(
     all_samples: list[dict] = []
 
     while curr <= end_dt:
+        day_offset = clock.offset_for(curr)
+        place = utils.make_place("scan", lat, lon, day_offset)
         day_data = compute_muhurat_for_day(
             place, curr, birth_nakshatra, birth_moon_sign
         )
@@ -977,9 +986,10 @@ def scan_lagna_shuddhi(
             # arbitrary clock-minutes depending on where the candidate list started,
             # not at genuine step_mins-minute intervals.
             candidates = [m for m in candidates if m % step_mins == 0]
+        candidates = [m for m in candidates if clock.usable(curr, m)]
 
         for time_mins in candidates:
-            jd = _jd_for_local(day_data["date"], time_mins, tz_offset)
+            jd = _jd_for_local(day_data["date"], time_mins, day_offset)
             lagna_sign, lagna_lord, lagna_long = compute_lagna_at_jd(jd, lat, lon)
             score, detail = _score_instant(
                 jd, lagna_sign, lagna_lord, day_data, time_mins, activity,
@@ -1148,6 +1158,9 @@ def scan_family_lagna_shuddhi(
 
     Each member dict must have keys:
       name, lat, lon, tz_offset, birth_nakshatra, birth_moon_sign
+    and may have ``tz_name``, an IANA zone (see scan_lagna_shuddhi): when it is
+    given, that member's dates are read on the offset in force on each date and
+    unusable clock-change wall times are never candidates for that member.
 
     Returns a dict with:
       instant: "YYYY-MM-DD HH:MM" | None
@@ -1166,14 +1179,21 @@ def scan_family_lagna_shuddhi(
     # Pre-compute day_data for every member × every date.
     # Keyed by (member_index, date_str).
     member_day_data: dict[tuple[int, str], dict] = {}
+    clocks = [
+        event_clock.make_clock(m["tz_offset"], m.get("tz_name")) for m in members
+    ]
+    # Keyed like member_day_data: the offset each member's day was read on.
+    member_day_offset: dict[tuple[int, str], float] = {}
     curr = start_dt
     while curr <= end_dt:
         for idx, m in enumerate(members):
-            place = utils.make_place(m["name"], m["lat"], m["lon"], m["tz_offset"])
+            day_offset = clocks[idx].offset_for(curr)
+            place = utils.make_place(m["name"], m["lat"], m["lon"], day_offset)
             dd = compute_muhurat_for_day(
                 place, curr, m.get("birth_nakshatra"), m.get("birth_moon_sign")
             )
             member_day_data[(idx, curr.strftime("%Y-%m-%d"))] = dd
+            member_day_offset[(idx, curr.strftime("%Y-%m-%d"))] = day_offset
         curr += timedelta(days=1)
 
     # Collect candidate (date_str, time_mins) pairs = UNION across all members.
@@ -1192,8 +1212,16 @@ def scan_family_lagna_shuddhi(
                 candidate_set.add((date_str, m))
         curr += timedelta(days=1)
 
-    # Sort candidates for determinism.
-    candidates = sorted(candidate_set)
+    # Drop any wall time a member's clock cannot stand behind (a clock-change
+    # day: nonexistent, ambiguous, or before the change), then sort for
+    # determinism.
+    candidates = sorted(
+        (d, t) for d, t in candidate_set
+        if all(
+            clocks[idx].usable(datetime.strptime(d, "%Y-%m-%d").date(), t)
+            for idx in range(len(members))
+        )
+    )
 
     def _score_candidate(date_str: str, time_mins: int) -> dict | None:
         """Score a single (date, minute) across all members.
@@ -1207,7 +1235,7 @@ def scan_family_lagna_shuddhi(
 
         for idx, m in enumerate(members):
             dd = member_day_data[(idx, date_str)]
-            jd = _jd_for_local(date_str, time_mins, m["tz_offset"])
+            jd = _jd_for_local(date_str, time_mins, member_day_offset[(idx, date_str)])
             lagna_sign, lagna_lord, lagna_long = compute_lagna_at_jd(jd, m["lat"], m["lon"])
             score, detail = _score_instant(
                 jd, lagna_sign, lagna_lord, dd, time_mins, activity,
