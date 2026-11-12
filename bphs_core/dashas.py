@@ -123,8 +123,13 @@ def _yogini_dashas(snapshot: ChartSnapshot,
                    birth_date: datetime,
                    end_date: datetime | None = None) -> list[DashaPeriod]:
     nak, fraction = _moon_nakshatra_and_fraction(snapshot)
+    # BPHS ch. 46 sloka 199 (standard Sanskrit numbering): add three to the birth
+    # nakshatra's number (Ashwini = 1) and divide by eight; the remainder, counted
+    # from one, is the starting yogini in YOGINI_ORDER, a remainder of 0 being the
+    # eighth (Sankata). With the zero-based index n that is (n + 1 + 3 - 1) mod 8,
+    # so Ashwini starts Bhramari (Mars) and Uttara Ashadha Sankata (Rahu).
     nak_idx = utils.NAKSHATRAS.index(nak)
-    yogini_idx = nak_idx % 8
+    yogini_idx = (nak_idx + 3) % 8
     start_yogini = YOGINI_ORDER[yogini_idx]
     total_first = YOGINI_YEARS[start_yogini]
     elapsed = fraction * total_first

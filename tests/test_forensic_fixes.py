@@ -375,9 +375,9 @@ class TestHouseSystemField:
         """When swe.houses raises for Placidus, the snapshot must carry
         house_system='equatorial'.
 
-        We use a mid-latitude location (not polar) so that pyjhora's own
-        swe.houses_ex call (inside charts.rasi_chart) succeeds — only our
-        monkeypatched bphs_core swe.houses call is intercepted.
+        The Placidus failure is simulated at a mid-latitude location, so this
+        pins the fallback branch itself; real polar births are pinned through
+        the route by tests/test_polar_latitude_chart.py.
         """
         import swisseph as swe_mod
 
@@ -394,7 +394,7 @@ class TestHouseSystemField:
         monkeypatch.setattr(chart_mod.swe, "houses", _failing_placidus)
 
         from bphs_core.chart import Chart, PersonalData
-        # Use a mid-latitude location so pyjhora's rasi_chart doesn't also fail
+        # Mid-latitude: the Placidus failure comes from the patch, not the sky
         person = PersonalData(
             name="T", birth_date=datetime.date(2000, 1, 1),
             birth_time=datetime.time(12, 0), birth_place="X",

@@ -69,7 +69,7 @@ from jhora.panchanga import drik
 #   2. ``drik.planet_list`` -- a MUTABLE module global, rebuilt by
 #      ``drik.set_planet_list()``; body id -> planet id for the position loops.
 #   3. ``drik.dhasavarga``'s own parameter default. This is the lever the chart
-#      path uses: ``charts.rasi_chart`` -> ``drik.dhasavarga(jd, place, 1)``.
+#      path uses: ``Chart._compute`` calls ``drik.dhasavarga(jd, place, 1)``.
 #      Under pyjhora 4.8.6 dhasavarga declared
 #      ``set_rahu_ketu_as_true_nodes=True`` as a LITERAL default (not ``None``),
 #      so it re-derived planet_list from that literal and never consulted lever 1
@@ -116,7 +116,7 @@ _SERVING_PATH_NODE_PARAMETER = "set_rahu_ketu_as_true_nodes"
 def _serving_path_node_default() -> bool | None:
     """The node model ``drik.dhasavarga`` applies when this repo does not pass one.
 
-    ``charts.rasi_chart`` calls ``dhasavarga`` without that argument, so this
+    ``Chart._compute`` calls ``dhasavarga`` without that argument, so this
     literal -- not ``const._RAHU`` -- decides which node every served chart
     carries. ``None`` means the library defers to the constants, which
     ``apply_lunar_node_model`` has already pinned, and is therefore acceptable.
@@ -211,13 +211,13 @@ def apply_lunar_node_model() -> None:
     if serving_default is not None and serving_default != want_true_node:
         raise RuntimeError(
             f"this engine declares the {LUNAR_NODE_MODEL} lunar node, but the chart "
-            f"path (charts.rasi_chart -> drik.dhasavarga) applies "
+            f"path (drik.dhasavarga, called by Chart._compute) applies "
             f"{_SERVING_PATH_NODE_PARAMETER}={serving_default!r} of its own accord, "
             "so every served Rahu and Ketu would be on the other model -- up to "
             "1.98 degrees away, a different nakshatra pada on roughly a third of "
             "dates. Refusing to serve charts that contradict the declaration. Either "
-            "the dependency changed that default (revert the bump, or route the "
-            "chart path through drik.dhasavarga explicitly and re-record the Swiss "
+            "the dependency changed that default (revert the bump, or pass the node "
+            "argument to drik.dhasavarga explicitly and re-record the Swiss "
             "goldens), or LUNAR_NODE_MODEL was changed without that routing work."
         )
 
