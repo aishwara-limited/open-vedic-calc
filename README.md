@@ -237,6 +237,37 @@ Endpoints under `/v1/`:
 | POST | `/special-points` | Arudha, Upapada, Atmakaraka, Karakamsa |
 | GET | `/source` | License, source URL, running commit |
 
+### Muhurat: the event's place and zone
+
+A muhurat is a time for an event, so its sunrise, Rahu Kala, chogadiya and
+rising sign belong to where the event is held, and its clock times to that
+place's zone **on each scanned date** — London is UTC+1 in July and UTC+0 in
+December, so no single fixed offset is right for a July birth chart and a
+December event at once.
+
+`/v1/muhurat`, `/v1/muhurat/lagna-shuddhi` and
+`/v1/muhurat/family-lagna-shuddhi` (and their `/async` forms) take three
+optional fields, given together or not at all (422 otherwise):
+`event_latitude`, `event_longitude` and `event_timezone`, an IANA zone name
+(`Europe/London`; an unknown name is a 422). They are kept separate from the
+person: the person's own coordinates and `timezone_offset_hours` still place the
+birth moment and the natal Moon.
+
+With them:
+
+- every scanned date is computed at the event's place, on the UTC offset in
+  force on that date (the offset at local noon), from the tz database;
+- on a clock-change day no wall time is scored that does not exist, that names
+  two different instants, or that lies on the other side of the change from the
+  day's own offset (`bphs_core/event_clock.py`);
+- in the family scan every member is scored at that one place and zone, so one
+  wall time is one absolute instant for the whole group, while each member's
+  natal Moon still comes from their own birth chart.
+
+Without them a request behaves as it always has: the person's coordinates and
+one fixed offset for every date. On `/v1/muhurat`'s day panels of a clock-change
+day, the night-time windows before the change are read on the day's own offset.
+
 ### Errors
 
 Request-validation failures return `422` with `{"detail": [...]}` (the standard

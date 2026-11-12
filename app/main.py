@@ -12,13 +12,13 @@ from fastapi.responses import JSONResponse
 
 from bphs_core import compat as compat_mod
 from bphs_core import dashas as dashas_mod
+from bphs_core import event_clock, utils
 from bphs_core import lagna_shuddhi as lagna_shuddhi_mod
 from bphs_core import muhurat as muhurat_mod
 from bphs_core import rashi_drishti as rashi_drishti_mod
 from bphs_core import special_points as sp_mod
 from bphs_core import strength as strength_mod
 from bphs_core import transits as transits_mod
-from bphs_core import utils
 from bphs_core import vimshopaka as vimshopaka_mod
 from bphs_core import yogas as yogas_mod
 from bphs_core.chart import Chart, ChartSnapshot, PersonalData, PlanetData
@@ -645,9 +645,13 @@ def muhurat_endpoint(req: MuhurtRequest):
 
     days = []
     curr = start_dt
-    place = utils.make_place(req.name, req.latitude, req.longitude, req.timezone_offset_hours)
+    # The event's place and zone when given; else the person's own coordinates
+    # and fixed offset. Each date is read on the offset in force on that date.
+    lat, lon = req.event_coordinates(req.latitude, req.longitude)
+    clock = event_clock.make_clock(req.timezone_offset_hours, req.event_timezone)
 
     while curr <= end_dt:
+        place = utils.make_place(req.name, lat, lon, clock.offset_for(curr))
         day_data = muhurat_mod.compute_muhurat_for_day(
             place=place,
             target_date=curr,
@@ -699,11 +703,12 @@ def _prepare_lagna_shuddhi(req: LagnaShuddhiRequest):
     """Validate ``req`` (422 now) and return the scan runnable."""
     _validate_lagna_shuddhi_range(req.start_date, req.end_date)
     birth_nak, birth_sign = _natal_moon(req)
+    lat, lon = req.event_coordinates(req.latitude, req.longitude)
 
     def _run_scan() -> LagnaShuddhiResponse:
         result = lagna_shuddhi_mod.scan_lagna_shuddhi(
-            lat=req.latitude,
-            lon=req.longitude,
+            lat=lat,
+            lon=lon,
             tz_offset=req.timezone_offset_hours,
             birth_nakshatra=birth_nak,
             birth_moon_sign=birth_sign,
@@ -711,6 +716,7 @@ def _prepare_lagna_shuddhi(req: LagnaShuddhiRequest):
             end_date=req.end_date,
             activity=req.activity_category,
             step_seconds=req.step_seconds,
+            tz_name=req.event_timezone,
         )
         best_raw = result["best_instant"]
         best_window_raw = result["best_window"]
@@ -739,14 +745,19 @@ def _prepare_family_lagna_shuddhi(req: FamilyLagnaShuddhiRequest):
     _validate_lagna_shuddhi_range(req.start_date, req.end_date)
 
     # Build per-member dicts for the scan, extracting natal Moon from chart.
+    # With an event place every member is scored at that one place, in that one
+    # zone, so one wall time is one absolute instant for the whole group; each
+    # member's natal Moon still comes from their own birth chart.
     member_dicts = []
     for m in req.members:
         birth_nak, birth_sign = _natal_moon(m)
+        lat, lon = req.event_coordinates(m.latitude, m.longitude)
         member_dicts.append({
             "name": m.name,
-            "lat": m.latitude,
-            "lon": m.longitude,
+            "lat": lat,
+            "lon": lon,
             "tz_offset": m.timezone_offset_hours,
+            "tz_name": req.event_timezone,
             "birth_nakshatra": birth_nak,
             "birth_moon_sign": birth_sign,
         })
