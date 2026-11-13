@@ -15,14 +15,19 @@ the minimum individual score so no weak member can be averaged away.
 """
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 import swisseph as swe
 from jhora.panchanga import drik
 
 from . import utils
-from .muhurat import _TARA_BALA_LEVELS, compute_muhurat_for_day
+from .muhurat import (
+    _TARA_BALA_LEVELS,
+    VARJYAM_HOURS_KEY,
+    compute_muhurat_for_day,
+    panchanga_at_instant,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -277,8 +282,22 @@ def _event_navamsha_factor(nav_sign: str, lagna_sign: str,
 # Time helpers
 # ---------------------------------------------------------------------------
 
+_DAY_MINS = 24 * 60
+
+
 def _hhmm_to_mins(hhmm: str) -> int:
+    """Minutes after midnight of an ``HH:MM`` string.
+
+    Hours past 23 are read as they stand: the scan states a vaara's
+    after-midnight minutes on an EXTENDED clock (``25:30`` is 01:30 on the next
+    civil date), see :func:`_ext_hhmm`.
+    """
     return int(hhmm[:2]) * 60 + int(hhmm[3:5])
+
+
+def _ext_hhmm(mins: int) -> str:
+    """Render minutes on the extended clock of one vaara (no wrap at 24:00)."""
+    return f"{mins // 60:02d}:{mins % 60:02d}"
 
 
 def _mins_to_hhmm(mins: int) -> str:
@@ -314,14 +333,35 @@ def _jd_for_local(date_str: str, time_mins: int, tz_offset: float) -> float:
 # Hora lord
 # ---------------------------------------------------------------------------
 
-def compute_hora_lord(date_str: str, time_hhmm: str, sunrise_hhmm: str) -> str:
-    """Return the planetary hora lord at the given local time on the given date."""
+def compute_hora_lord(date_str: str, time_mins: int, sunrise_hhmm: str) -> str:
+    """The kala-hora lord at *time_mins* in the vaara that begins at sunrise on
+    *date_str*.
+
+    The vaara runs from sunrise to the next sunrise (the panchanga convention,
+    "udayad udayam vaarah"), and its horas are counted from ITS sunrise: the
+    first belongs to the vaara lord and the rest descend in the Chaldean order
+    Saturn, Jupiter, Mars, Sun, Venus, Mercury, Moon (Surya Siddhanta
+    ch. XII vv. 78-79, Burgess 1860). Equal sixty-minute horas, the 24th
+    running on to the next sunrise, which can fall a minute or two more than
+    24 hours later.
+
+    *time_mins* counts from the local midnight that begins *date_str* and runs
+    PAST 24:00 for the vaara's after-midnight hours (1500 is 01:00 on the next
+    civil date). An instant before this vaara's sunrise belongs to the
+    PREVIOUS vaara, with a different lord and a different sunrise, so it is
+    refused rather than wrapped: wrapping it is exactly how a pre-dawn instant
+    used to be given the lord of the day that had not yet begun.
+    """
+    sunrise = _hhmm_to_mins(sunrise_hhmm)
+    if time_mins < sunrise:
+        raise ValueError(
+            f"minute {time_mins} precedes the sunrise ({sunrise_hhmm}) of the "
+            f"vaara {date_str}; it belongs to the previous vaara"
+        )
     date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
     day_lord = _WEEKDAY_LORDS[date_obj.strftime("%A")]
-    day_lord_idx = _CHALDEAN.index(day_lord)
-    elapsed_mins = (_hhmm_to_mins(time_hhmm) - _hhmm_to_mins(sunrise_hhmm)) % (24 * 60)
-    hora_num = elapsed_mins // 60
-    return _CHALDEAN[(day_lord_idx + hora_num) % 7]
+    hora_num = min((time_mins - sunrise) // 60, 23)
+    return _CHALDEAN[(_CHALDEAN.index(day_lord) + hora_num) % 7]
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +405,19 @@ def _score_instant(
     """
     Score a single candidate instant. Returns (score 0..1, detail_dict).
     score = 0.0 means hard-disqualified (Rahu Kala / Yamaganda / Gulika).
+
+    *day_data* is the VAARA that contains the instant (sunrise to the next
+    sunrise), and *time_mins* counts from the local midnight that begins it,
+    running past 24:00 for its after-midnight hours -- the scans build both
+    with :class:`_ScanDays`. The tithi, karana and yoga are NOT taken from
+    *day_data*: they are evaluated at *jd* itself (``panchanga_at_instant``),
+    because each changes at any time of day.
     """
+    # The Sun-Moon limbs IN FORCE AT THIS INSTANT (Surya Siddhanta ch. II
+    # vv. 64-69). Computed first so every sample -- vetoed or not -- reports the
+    # limbs of its own instant. No exception guard: see panchanga_at_instant.
+    limbs = panchanga_at_instant(jd)
+
     inauspicious = day_data.get("inauspicious_periods", [])
     in_rahu = any(
         "Rahu" in (w.get("label") or "") and _in_window(time_mins, w["start"], w["end"])
@@ -400,8 +452,8 @@ def _score_instant(
         "lagna_lord_house": 0,
         "lagna_lord_dignity": "unknown",
         "malefics_in_lagna": 0,
-        "tithi": (day_data.get("panchanga") or {}).get("tithi"),
-        "yoga": (day_data.get("panchanga") or {}).get("yogam"),
+        "tithi": limbs.tithi,
+        "yoga": limbs.yoga,
         "panchanga_suitable": True,
         # Defaults for an instant hard-excluded BEFORE balam is computed — its
         # score is already 0.0/Avoid, so 'NoBirthData' (the no-penalty sentinel)
@@ -427,10 +479,13 @@ def _score_instant(
     # Per-activity hard vetoes (data-driven — see ActivityRule.hard_excludes).
     # Durmuhurtam/Varjyam (surgery), a locally-visible eclipse, Adhika Maasa, or
     # Bhadra (Vishti karana) disqualify the instant outright for the activities
-    # that name them.
+    # that name them. Bhadra is avoided for marriage and other auspicious
+    # beginnings (Muhurta Chintamani ch. 1, Shubhashubha Prakarana); it is a
+    # karana, so it is tested AT THE INSTANT -- a Vishti beginning at 15:00
+    # vetoes 17:00, and one that ended at 15:00 does not veto 17:00.
     rule = _rule_for(activity)
     he = rule.hard_excludes
-    karana = (day_data.get("panchanga") or {}).get("karana") or ""
+    karana = limbs.karana
     # eclipse / adhik_maasa now carry bool | None. None == 'could not be
     # computed' → veto (fail closed), exactly like True; only an explicit False
     # clears the gate.
@@ -443,9 +498,7 @@ def _score_instant(
 
     in_auspicious = _label_at(time_mins, day_data.get("auspicious_muhurtas", []))
     chogadiya_label = _label_at(time_mins, day_data.get("chogadiya", []))
-    hora_lord = compute_hora_lord(
-        day_data["date"], _mins_to_hhmm(time_mins), day_data["sunrise"]
-    )
+    hora_lord = compute_hora_lord(day_data["date"], time_mins, day_data["sunrise"])
 
     # Lagna lord transit position at this exact instant. No exception guard
     # here, deliberately: a graha position that cannot be computed for a
@@ -541,28 +594,21 @@ def _score_instant(
     # refinement. The penalty/bonus magnitudes are a tuning choice; their
     # ordering (Tara/Chandra >= tithi/yoga > navamsa) follows that priority. ---
 
-    # Panchanga suitability — three-valued (fail closed on a missing limb).
-    # A tithi or yoga that could not be computed (None) must NOT gate as
-    # suitable: it carries a penalty and the membership checks are skipped.
-    # When both limbs ARE computed: Rikta tithis, Amavasya (new moon), and the
-    # avoided yogas deprioritise.
-    panchanga_computed = detail["tithi"] is not None and detail["yoga"] is not None
-    if not panchanga_computed:
-        detail["panchanga_suitable"] = False
+    # Panchanga suitability, judged on the tithi and yoga AT THIS INSTANT:
+    # Rikta tithis, Amavasya (new moon) and the avoided yogas deprioritise.
+    # There is no 'could not be computed' arm any more: the limbs come from
+    # panchanga_at_instant, which raises rather than returning a missing limb,
+    # so a broken ephemeris fails the scan instead of being scored around.
+    is_rikta = any(r in limbs.tithi for r in _RIKTA_TITHIS)
+    is_amavasya = _AMAVASYA in limbs.tithi
+    is_bad_yoga = limbs.yoga in _INAUSPICIOUS_YOGAS
+    detail["panchanga_suitable"] = not (is_rikta or is_amavasya or is_bad_yoga)
+    if is_rikta:
         score -= 0.10
-    else:
-        tithi_name = detail["tithi"]
-        yoga_name = detail["yoga"]
-        is_rikta = any(r in tithi_name for r in _RIKTA_TITHIS)
-        is_amavasya = _AMAVASYA in tithi_name
-        is_bad_yoga = yoga_name in _INAUSPICIOUS_YOGAS
-        detail["panchanga_suitable"] = not (is_rikta or is_amavasya or is_bad_yoga)
-        if is_rikta:
-            score -= 0.10
-        if is_amavasya:
-            score -= 0.10
-        if is_bad_yoga:
-            score -= 0.10
+    if is_amavasya:
+        score -= 0.10
+    if is_bad_yoga:
+        score -= 0.10
 
     # Vaara (weekday) suitability — classical day-lord preference for the activity.
     vaara = (day_data.get("panchanga") or {}).get("vaara") or ""
@@ -604,7 +650,12 @@ def _score_instant(
 # ---------------------------------------------------------------------------
 
 def _candidate_minutes(day_data: dict) -> list[int]:
-    """Return sorted list of minute-of-day values to scan for this day."""
+    """Sorted minutes covered by the auspicious and favourable-chogadiya windows.
+
+    Read on the vaara's extended clock (see :class:`_ScanDays`): a minute after
+    midnight comes back past 1440, never folded onto the start of the day it
+    does not belong to.
+    """
     auspicious = day_data.get("auspicious_muhurtas", [])
     chogadiya = [
         w for w in day_data.get("chogadiya", [])
@@ -613,13 +664,212 @@ def _candidate_minutes(day_data: dict) -> list[int]:
     minutes: set[int] = set()
     for window_list in (auspicious, chogadiya):
         for w in window_list:
-            s = _hhmm_to_mins(w["start"])
-            e = _hhmm_to_mins(w["end"])
-            if e <= s:
-                e += 24 * 60
-            for m in range(s, e):
-                minutes.add(m % (24 * 60))
+            minutes.update(range(_hhmm_to_mins(w["start"]), _hhmm_to_mins(w["end"])))
     return sorted(minutes)
+
+
+# ---------------------------------------------------------------------------
+# Vedic days: every window on the date it falls on, every instant in its vaara
+# ---------------------------------------------------------------------------
+#
+# compute_muhurat_for_day serves each window as bare wall-clock HH:MM, and the
+# night ones run from this date's sunset to the NEXT date's sunrise. Read
+# against the civil date that computed them, "02:00" from the night chogadiya
+# of D was scored as 02:00 on D -- an instant in the night that began on the
+# evening of D-1, with that night's labels, hora and weekday taken from the
+# wrong day. Measured on the code before this change at Colombo, December 2026:
+# every pre-dawn candidate carried the chogadiya of the following night, and a
+# 00:00 candidate on Wednesday 16th was given Jupiter's hora instead of
+# Mercury's (17th hora of Tuesday's vaara).
+#
+# So the scans place every window on one continuous minute axis, cut the axis
+# into VAARAS -- sunrise to the next sunrise, the panchanga day -- and score an
+# instant against the vaara that contains it, on that vaara's extended clock.
+
+_WINDOW_LISTS = ("auspicious_muhurtas", "chogadiya", "inauspicious_periods")
+_BRAHMA_LABEL = "Brahma Muhurtha"
+_VARJYAM_LABEL = "Varjyam"
+
+
+def _place_day_windows(day_data: dict, midnight: int) -> dict[str, list[tuple[int, int, dict]]]:
+    """Place each window of one computed day on the scan's minute axis.
+
+    *midnight* is the axis minute of that day's local midnight. Each window's
+    DATE is fixed by its definition, because its wall-clock HH:MM cannot say:
+
+    * Brahma Muhurtha is the two muhurtas BEFORE this day's sunrise.
+    * Varjyam is a slice of the nakshatra in force at noon, so it can fall on
+      the previous evening or after the coming midnight; its date comes from
+      the unrendered float hours compute_muhurat_for_day hands over under
+      ``VARJYAM_HOURS_KEY``. A day carrying a Varjyam window without them
+      cannot be placed, and raises.
+    * Every other window lies between this day's sunrise and the next one --
+      the day windows, Godhuli at sunset, and the night chogadiya, Nishita,
+      night Vijaya and night Durmuhurtam -- so one that reads earlier than
+      this day's sunrise is after the coming midnight.
+
+    A window whose start and end render to the same minute keeps the reading
+    it has always had here: the whole civil day of the day that computed it.
+    (The library returns such a zero-width Varjyam on a few days a year; for
+    the surgery veto that reading fails closed, and it is not reinterpreted
+    here.)
+
+    Returns, per window list, ``(start, end, window)`` with ``end > start``.
+    """
+    sunrise = _hhmm_to_mins(day_data["sunrise"])
+    placed: dict[str, list[tuple[int, int, dict]]] = {}
+    for key in _WINDOW_LISTS:
+        out = []
+        for w in day_data.get(key, []):
+            s, e = _hhmm_to_mins(w["start"]), _hhmm_to_mins(w["end"])
+            if s == e:
+                out.append((midnight, midnight + _DAY_MINS, w))
+                continue
+            label = w.get("label")
+            if label == _BRAHMA_LABEL:
+                start = s if s < sunrise else s - _DAY_MINS
+            elif label == _VARJYAM_LABEL:
+                hours = day_data.get(VARJYAM_HOURS_KEY)
+                if hours is None:
+                    raise ValueError(
+                        f"the Varjyam window of {day_data.get('date')} carries no "
+                        "float placement, so the date it falls on is unknown"
+                    )
+                start = s + _DAY_MINS * round((hours[0] * 60.0 - s) / _DAY_MINS)
+            else:
+                start = s if s >= sunrise else s + _DAY_MINS
+            out.append((midnight + start, midnight + start + (e - s) % _DAY_MINS, w))
+        placed[key] = out
+    return placed
+
+
+@dataclass(frozen=True)
+class _Vaara:
+    """One vaara, from its sunrise to the next, as the scorer reads it."""
+    sunrise: int        # axis minute of this vaara's sunrise
+    next_sunrise: int   # axis minute of the next sunrise (exclusive end)
+    midnight: int       # axis minute of the local midnight that begins it
+    # The day_data handed to the scorer for an instant before / after the
+    # coming midnight. They differ only in the eclipse and Adhika Maasa flags,
+    # which are answered per CIVIL date (an eclipse visible on that local
+    # calendar day) and so follow the instant's own date.
+    views: tuple[dict, dict]
+
+
+class _ScanDays:
+    """The vaaras a scan of civil dates *first* .. *last* needs, for one place.
+
+    An instant on those dates lies in the vaaras that begin on *first* - 1
+    (its pre-dawn hours) through *last*; their windows come from the days
+    *first* - 1 through *last* + 1, because the night windows of a day reach
+    into the next date and a Varjyam can lie on the previous evening (it is
+    bounded by its nakshatra, at most about 27 hours either side of noon, so
+    no further day can reach a requested date). Hence two neighbouring days
+    are computed beyond the request -- and one of them can fail for the same
+    reasons as a requested day (a polar day frame), which then fails the scan,
+    naming that date.
+
+    Days are computed LAZILY, as the vaaras that need them are asked for, so
+    the solo scan interleaves one day's computation with the scoring of the
+    vaara before it -- the same rhythm the scan had when it computed and scored
+    a day at a time. Computing every day up front made a run of back-to-back
+    day-sized lock holds at the start of a scan, and a concurrent chart request
+    measurably waited behind it (tests/test_ephemeris_lock.py).
+    """
+
+    def __init__(self, place: drik.Place, first: date, last: date,
+                 birth_nakshatra: str | None,
+                 birth_moon_sign: str | None) -> None:
+        self._place = place
+        self._birth = (birth_nakshatra, birth_moon_sign)
+        self.origin = first - timedelta(days=1)    # its midnight is axis 0
+        self.last_day = last + timedelta(days=1)   # the last day computed
+        self._days: dict[date, dict] = {}
+        self._placed: dict[date, dict[str, list[tuple[int, int, dict]]]] = {}
+        self._vaaras: dict[date, _Vaara] = {}
+
+    def vaara_dates(self) -> list[date]:
+        """The vaaras an instant on the requested dates can lie in, in order."""
+        n = (self.last_day - self.origin).days
+        return [self.origin + timedelta(days=k) for k in range(n)]
+
+    def _day(self, d: date) -> dict:
+        if d not in self._days:
+            dd = compute_muhurat_for_day(self._place, d, *self._birth)
+            self._days[d] = dd
+            self._placed[d] = _place_day_windows(dd, (d - self.origin).days * _DAY_MINS)
+        return self._days[d]
+
+    def vaara(self, d: date) -> _Vaara:
+        if d in self._vaaras:
+            return self._vaaras[d]
+        nxt = d + timedelta(days=1)
+        midnight = (d - self.origin).days * _DAY_MINS
+        lo = midnight + _hhmm_to_mins(self._day(d)["sunrise"])
+        hi = midnight + _DAY_MINS + _hhmm_to_mins(self._day(nxt)["sunrise"])
+        lists: dict[str, list[dict]] = {key: [] for key in _WINDOW_LISTS}
+        # Only the neighbouring days can reach this vaara (see the class
+        # docstring); each list keeps its served order, day by day.
+        for f in (d + timedelta(days=k) for k in range(-2, 3)):
+            if not self.origin <= f <= self.last_day:
+                continue
+            self._day(f)
+            for key in _WINDOW_LISTS:
+                for s, e, w in self._placed[f][key]:
+                    s, e = max(s, lo), min(e, hi)
+                    if e > s:
+                        lists[key].append({
+                            **w,
+                            "start": _ext_hhmm(s - midnight),
+                            "end": _ext_hhmm(e - midnight),
+                        })
+        view = {**self._days[d], **lists, "date": d.isoformat()}
+        after_midnight = {
+            **view,
+            "is_eclipse_day": self._days[nxt].get("is_eclipse_day"),
+            "is_adhik_maasa": self._days[nxt].get("is_adhik_maasa"),
+        }
+        self._vaaras[d] = _Vaara(lo, hi, midnight, (view, after_midnight))
+        return self._vaaras[d]
+
+    def candidates_in(self, d: date, first: date, last: date,
+                      step_mins: int) -> list[tuple[str, int]]:
+        """(civil date, minute of day) of the candidates of vaara *d* that fall
+        on *first* .. *last*, in time order.
+
+        The step is applied to the minute of the CIVIL day, as it always was,
+        so samples land on genuine step-minute clock marks.
+        """
+        v = self.vaara(d)
+        lo = (first - self.origin).days * _DAY_MINS
+        hi = ((last - self.origin).days + 1) * _DAY_MINS
+        out: list[tuple[str, int]] = []
+        for m in _candidate_minutes(v.views[0]):
+            axis = v.midnight + m
+            if lo <= axis < hi and (axis % _DAY_MINS) % step_mins == 0:
+                civil = self.origin + timedelta(days=axis // _DAY_MINS)
+                out.append((civil.isoformat(), axis % _DAY_MINS))
+        return out
+
+    def candidates(self, first: date, last: date, step_mins: int) -> set[tuple[str, int]]:
+        """Every candidate on *first* .. *last*, across all the vaaras."""
+        out: set[tuple[str, int]] = set()
+        for d in self.vaara_dates():
+            out.update(self.candidates_in(d, first, last, step_mins))
+        return out
+
+    def locate(self, date_str: str, time_mins: int) -> tuple[dict, int]:
+        """The vaara view containing a civil instant, and its extended-clock minute."""
+        civil = date.fromisoformat(date_str)
+        axis = (civil - self.origin).days * _DAY_MINS + time_mins
+        for d in (civil, civil - timedelta(days=1)):
+            if not self.origin <= d < self.last_day:
+                continue
+            v = self.vaara(d)
+            if v.sunrise <= axis < v.next_sunrise:
+                m = axis - v.midnight
+                return v.views[0 if m < _DAY_MINS else 1], m
+        raise LookupError(f"{date_str} {_mins_to_hhmm(time_mins)} is outside the scanned vaaras")
 
 
 # ---------------------------------------------------------------------------
@@ -961,61 +1211,55 @@ def scan_lagna_shuddhi(
 
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
     end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
-    from datetime import timedelta
-    curr = start_dt
 
     all_samples: list[dict] = []
 
-    while curr <= end_dt:
-        day_data = compute_muhurat_for_day(
-            place, curr, birth_nakshatra, birth_moon_sign
+    # Every candidate is a CIVIL instant on start_date .. end_date, scored
+    # against the vaara that contains it (see _ScanDays). The step filters the
+    # actual minute of the civil day, not an enumeration index, so samples
+    # land on genuine step_mins-minute clock marks.
+    days = _ScanDays(place, start_dt, end_dt, birth_nakshatra, birth_moon_sign)
+    candidates = (
+        c for d in days.vaara_dates()
+        for c in days.candidates_in(d, start_dt, end_dt, step_mins)
+    )
+    for date_str, time_mins in candidates:
+        day_data, vaara_mins = days.locate(date_str, time_mins)
+        jd = _jd_for_local(date_str, time_mins, tz_offset)
+        lagna_sign, lagna_lord, lagna_long = compute_lagna_at_jd(jd, lat, lon)
+        score, detail = _score_instant(
+            jd, lagna_sign, lagna_lord, day_data, vaara_mins, activity,
+            lagna_long=lagna_long,
+            birth_nakshatra=birth_nakshatra,
+            birth_moon_sign=birth_moon_sign,
         )
-        candidates = _candidate_minutes(day_data)
-        if step_mins > 1:
-            # Filter on the actual minute-of-day value, not the enumeration index.
-            # Filtering on `i % step_mins == 0` (old code) produced samples at
-            # arbitrary clock-minutes depending on where the candidate list started,
-            # not at genuine step_mins-minute intervals.
-            candidates = [m for m in candidates if m % step_mins == 0]
-
-        for time_mins in candidates:
-            jd = _jd_for_local(day_data["date"], time_mins, tz_offset)
-            lagna_sign, lagna_lord, lagna_long = compute_lagna_at_jd(jd, lat, lon)
-            score, detail = _score_instant(
-                jd, lagna_sign, lagna_lord, day_data, time_mins, activity,
-                lagna_long=lagna_long,
-                birth_nakshatra=birth_nakshatra,
-                birth_moon_sign=birth_moon_sign,
-            )
-            all_samples.append({
-                "instant": f"{day_data['date']} {_mins_to_hhmm(time_mins)}",
-                "lagna_sign": lagna_sign,
-                "lagna_lord": lagna_lord,
-                "lagna_lord_house": detail["lagna_lord_house"],
-                "lagna_lord_dignity": detail["lagna_lord_dignity"],
-                "hora_lord": detail["hora_lord"],
-                "chogadiya_label": detail["chogadiya_label"],
-                "in_rahu_kala": detail["in_rahu_kala"],
-                "in_yamaganda": detail["in_yamaganda"],
-                "in_gulika": detail["in_gulika"],
-                "in_durmuhurtam": detail["in_durmuhurtam"],
-                "in_varjyam": detail["in_varjyam"],
-                "in_auspicious_muhurta": detail["in_auspicious_muhurta"],
-                "tara_bala": detail["tara_bala"],
-                "chandra_bala": detail["chandra_bala"],
-                "tithi": detail["tithi"],
-                "yoga": detail["yoga"],
-                "panchanga_suitable": detail["panchanga_suitable"],
-                # Carried so the clearance prose can report an unverifiable
-                # absolute-veto day (hard-gate degraded) instead of falsely
-                # claiming 'Clear of Rahu Kala …'.
-                "hard_gate_failed": bool(day_data.get("hard_gate_failed")),
-                "event_navamsha": detail["event_navamsha"],
-                "event_navamsha_suitable": detail["event_navamsha_suitable"],
-                "score": round(score, 4),
-            })
-
-        curr += timedelta(days=1)
+        all_samples.append({
+            "instant": f"{date_str} {_mins_to_hhmm(time_mins)}",
+            "lagna_sign": lagna_sign,
+            "lagna_lord": lagna_lord,
+            "lagna_lord_house": detail["lagna_lord_house"],
+            "lagna_lord_dignity": detail["lagna_lord_dignity"],
+            "hora_lord": detail["hora_lord"],
+            "chogadiya_label": detail["chogadiya_label"],
+            "in_rahu_kala": detail["in_rahu_kala"],
+            "in_yamaganda": detail["in_yamaganda"],
+            "in_gulika": detail["in_gulika"],
+            "in_durmuhurtam": detail["in_durmuhurtam"],
+            "in_varjyam": detail["in_varjyam"],
+            "in_auspicious_muhurta": detail["in_auspicious_muhurta"],
+            "tara_bala": detail["tara_bala"],
+            "chandra_bala": detail["chandra_bala"],
+            "tithi": detail["tithi"],
+            "yoga": detail["yoga"],
+            "panchanga_suitable": detail["panchanga_suitable"],
+            # Carried so the clearance prose can report an unverifiable
+            # absolute-veto day (hard-gate degraded) instead of falsely
+            # claiming 'Clear of Rahu Kala …'.
+            "hard_gate_failed": bool(day_data.get("hard_gate_failed")),
+            "event_navamsha": detail["event_navamsha"],
+            "event_navamsha_suitable": detail["event_navamsha_suitable"],
+            "score": round(score, 4),
+        })
 
     if not all_samples:
         # Fallback: no auspicious windows found — return a zero-scored placeholder
@@ -1157,40 +1401,26 @@ def scan_family_lagna_shuddhi(
       consensus_quality: "strict" | "best_effort"
       compromised_members: list[str]
     """
-    from datetime import timedelta
-
     step_mins = max(1, step_seconds // 60)
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
     end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
 
-    # Pre-compute day_data for every member × every date.
-    # Keyed by (member_index, date_str).
-    member_day_data: dict[tuple[int, str], dict] = {}
-    curr = start_dt
-    while curr <= end_dt:
-        for idx, m in enumerate(members):
-            place = utils.make_place(m["name"], m["lat"], m["lon"], m["tz_offset"])
-            dd = compute_muhurat_for_day(
-                place, curr, m.get("birth_nakshatra"), m.get("birth_moon_sign")
-            )
-            member_day_data[(idx, curr.strftime("%Y-%m-%d"))] = dd
-        curr += timedelta(days=1)
+    # Each member's vaaras over the range, at that member's own place (see
+    # _ScanDays): an instant is scored for every member against the vaara that
+    # contains it at THAT member's place.
+    member_days = [
+        _ScanDays(
+            utils.make_place(m["name"], m["lat"], m["lon"], m["tz_offset"]),
+            start_dt, end_dt, m.get("birth_nakshatra"), m.get("birth_moon_sign"),
+        )
+        for m in members
+    ]
 
-    # Collect candidate (date_str, time_mins) pairs = UNION across all members.
+    # Collect candidate (date_str, time_mins) pairs = UNION across all members;
+    # the step filters the minute of the civil day, as in scan_lagna_shuddhi.
     candidate_set: set[tuple[str, int]] = set()
-    curr = start_dt
-    while curr <= end_dt:
-        date_str = curr.strftime("%Y-%m-%d")
-        for idx in range(len(members)):
-            dd = member_day_data[(idx, date_str)]
-            mins_list = _candidate_minutes(dd)
-            if step_mins > 1:
-                # Same fix as scan_lagna_shuddhi: filter on the actual minute-of-day
-                # value so that step granularity is respected regardless of list offset.
-                mins_list = [m for m in mins_list if m % step_mins == 0]
-            for m in mins_list:
-                candidate_set.add((date_str, m))
-        curr += timedelta(days=1)
+    for md in member_days:
+        candidate_set |= md.candidates(start_dt, end_dt, step_mins)
 
     # Sort candidates for determinism.
     candidates = sorted(candidate_set)
@@ -1206,11 +1436,11 @@ def scan_family_lagna_shuddhi(
         member_details: list[dict] = []
 
         for idx, m in enumerate(members):
-            dd = member_day_data[(idx, date_str)]
+            dd, vaara_mins = member_days[idx].locate(date_str, time_mins)
             jd = _jd_for_local(date_str, time_mins, m["tz_offset"])
             lagna_sign, lagna_lord, lagna_long = compute_lagna_at_jd(jd, m["lat"], m["lon"])
             score, detail = _score_instant(
-                jd, lagna_sign, lagna_lord, dd, time_mins, activity,
+                jd, lagna_sign, lagna_lord, dd, vaara_mins, activity,
                 lagna_long=lagna_long,
                 birth_nakshatra=m.get("birth_nakshatra"),
                 birth_moon_sign=m.get("birth_moon_sign"),

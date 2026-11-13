@@ -950,3 +950,39 @@ def test_no_accepted_scanned_day_loses_accuracy_to_the_fallback(
         "the scan's forward reach (tests/test_scanned_day_ephemeris_reach.py) "
         "and narrow the bound; do not relax this test."
     )
+
+
+def test_no_accepted_lagna_shuddhi_scan_loses_accuracy_at_either_edge(
+    swiss_ephemeris: int,
+) -> None:
+    """The lagna-shuddhi scans compute one NEIGHBOURING day beyond each end of
+    the request, and that reach is clean at both scanned-day bounds.
+
+    A scan scores each instant against the vaara (sunrise to sunrise) that
+    contains it, so its pre-dawn hours need the day BEFORE ``start_date`` and
+    its windows need the day AFTER ``end_date`` (a night window reaches the
+    next date, and a Varjyam can lie on the previous evening) -- see
+    ``bphs_core/lagna_shuddhi.py::_ScanDays``. That moves the scan's reach one
+    day past ``MAX_SCANNED_DATE`` (inside its 9-day margin) and one day before
+    ``MIN_SCANNED_DATE`` (before the data, where a Moshier answer is not a loss).
+    Measured when the neighbour days were introduced: zero in-span fallback at
+    either bound, at every timezone corner, for the solo and the family route.
+    """
+    failures: list[str] = []
+    for day in (MAX_SCANNED_DATE, MIN_SCANNED_DATE):
+        iso = day.isoformat()
+        cases = [
+            ("/v1/muhurat/lagna-shuddhi", _lagna(iso, iso, timezone_offset_hours=tz))
+            for tz in _TZ_CORNERS
+        ] + [("/v1/muhurat/family-lagna-shuddhi", _family(iso, iso))]
+        for endpoint, body in cases:
+            in_span, moshier, total = _in_span_fallback_during(endpoint, body)
+            if in_span:
+                failures.append(
+                    f"{endpoint} {iso}: {in_span} of {moshier}/{total} Moshier "
+                    "calls were at a JD INSIDE the shipped files"
+                )
+    assert not failures, (
+        "a lagna-shuddhi scan on a day the service ACCEPTS lost accuracy to the "
+        "fallback:\n" + "\n".join(f"  - {f}" for f in failures)
+    )
