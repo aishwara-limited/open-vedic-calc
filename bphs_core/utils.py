@@ -1,5 +1,6 @@
 import functools
 import inspect
+import logging
 import os
 import threading
 
@@ -7,6 +8,8 @@ import swisseph as swe
 from jhora import const as jhora_const
 from jhora import utils as jhora_utils
 from jhora.panchanga import drik
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # The lunar node model (Rahu / Ketu) is DECLARED here. It is never inherited.
@@ -855,15 +858,74 @@ def _apply_ephemeris_state() -> None:
     drik.set_ayanamsa_mode('LAHIRI')
 
 
+class _ThreadEphemerisFiles:
+    """Closes the owning thread's Swiss Ephemeris data files when that thread ends.
+
+    pyswisseph keeps its open data files in the same THREAD-local state as the
+    path and the ayanamsa, and nothing closes them when a thread ends. The
+    request pool retires idle worker threads and starts new ones, so every
+    worker that computed and then ended leaked its file handles. Once the
+    process ran out, a NEW thread could not open the data files and swisseph
+    answered from the Moshier fallback instead — silently, with plausible
+    numbers. Measured on Windows with the default C-runtime stream limit (512):
+    one fresh thread after another, each probing the Moon and the Sun, threads
+    1..254 read the Swiss files (retflag 65602) and every thread from the 255th
+    on read Moshier (65604) — 746 of 1000. The served consequence was the same
+    request answering differently depending on which worker took it. Measured
+    over 12 synthetic charts, Swiss files against the fallback through the real
+    /v1/chart and /v1/dashas handlers: Rahu/Ketu moved up to 0.0054 deg, the
+    Moon up to 0.0003 deg, Vimshottari boundaries up to 3.5 hours (71 boundary
+    dates moved by a day over 1930-2060), while the lagna and the ayanamsa
+    (which read no data file) stayed identical.
+
+    One instance lives in ``_THREAD_EPHEMERIS_STATE`` per initialised thread.
+    CPython clears a thread's ``threading.local`` values on that thread as it
+    exits, so ``__del__`` runs there and ``swe.close()`` releases exactly the
+    files that thread opened. ``swe.close()`` acts only on the CALLING thread's
+    state, so if the finalizer ever ran on another thread, closing would reset
+    that other thread's path and ayanamsa instead (and its cached "initialised"
+    flag would stop them being re-applied); it refuses and logs. It does not
+    take ``EPHEMERIS_LOCK``: it touches only the exiting thread's own state, and
+    a thread blocking on the lock while it exits would deadlock any holder that
+    is waiting for that thread to finish.
+
+    Contract: tests/test_response_determinism.py::test_short_lived_threads_answer_exactly_like_the_main_thread
+    and tests/test_thread_ephemeris_files.py.
+    """
+
+    __slots__ = ("_owner",)
+
+    # Bound once, so the finalizer does not depend on module globals that
+    # interpreter shutdown may already have cleared.
+    _close = staticmethod(swe.close)
+    _current_thread_id = staticmethod(threading.get_ident)
+
+    def __init__(self) -> None:
+        self._owner = self._current_thread_id()
+
+    def __del__(self) -> None:
+        if self._current_thread_id() != self._owner:
+            _logger.warning(
+                "ephemeris_files_not_closed: finalizer ran on thread %s, not on "
+                "owning thread %s; closing here would reset the wrong thread's state",
+                self._current_thread_id(), self._owner,
+            )
+            return
+        self._close()
+
+
 def _ensure_thread_ephemeris_state() -> None:
     """Apply the ephemeris path + Lahiri ayanamsa to the CALLING thread, once.
 
     Idempotent, and after the first call per thread it costs one attribute
-    lookup — so it is safe on every serialized entry point.
+    lookup — so it is safe on every serialized entry point. It also registers
+    the thread's ``_ThreadEphemerisFiles``, which closes the data files this
+    thread opens when the thread ends.
     """
     if getattr(_THREAD_EPHEMERIS_STATE, "initialised", False):
         return
     _apply_ephemeris_state()
+    _THREAD_EPHEMERIS_STATE.files = _ThreadEphemerisFiles()
     _THREAD_EPHEMERIS_STATE.initialised = True
 
 

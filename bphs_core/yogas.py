@@ -167,13 +167,25 @@ def detect_dhana_yogas(snapshot: ChartSnapshot) -> list[Yoga]:
     return yogas
 
 
-_KARAKA_PLANETS = {"Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"}
+# A TUPLE in the engine's declared graha order (``utils.PLANETS``: Sun, Moon,
+# Mars, Mercury, Jupiter, Venus, Saturn), never a set. This order decides which
+# graha a Parivartana description names first and the order of the entries when
+# a chart has several exchanges. It used to be a set of strings, whose iteration
+# order follows string hashing and so changes with every interpreter start
+# (PYTHONHASHSEED): the same chart was described as "Venus in Aquarius (owned by
+# Saturn) exchanges signs with Saturn in Libra" by one process and "Saturn in
+# Libra (owned by Venus) exchanges signs with Venus in Aquarius" by the next.
+# Contract: tests/test_parivartana_order.py and
+# tests/test_response_determinism.py::test_every_route_answers_identically_under_any_hash_seed.
+_KARAKA_PLANETS = ("Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn")
 
 
 def detect_parivartana_yoga(snapshot: ChartSnapshot) -> list[Yoga]:
     """Mutual sign exchange (Parivartana) between any two of the 7 planets.
 
     Planet A is in a sign owned by planet B, and B is in a sign owned by A.
+    The graha earlier in ``_KARAKA_PLANETS`` is named first, and exchanges are
+    listed in the order of their first-named graha.
     """
     yogas: list[Yoga] = []
     planets = [p for p in _KARAKA_PLANETS if p in snapshot.rasi_chart]
