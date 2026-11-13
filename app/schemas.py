@@ -1,8 +1,9 @@
 from datetime import date, datetime, time
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, model_validator
 
+from bphs_core import event_clock
 from bphs_core.lagna_shuddhi import ActivityCategory
 
 
@@ -610,7 +611,49 @@ class SourceInfo(BaseModel):
 
 # --- Muhurat ---
 
-class MuhurtRequest(BoundedPersonFields):
+def _known_zone(value: str | None) -> str | None:
+    if value is not None and not event_clock.is_known_zone(value):
+        # States the constraint, never the submitted value.
+        raise ValueError("event_timezone must be an IANA time zone name")
+    return value
+
+
+class EventPlaceFields(BaseModel):
+    """Where the event is held, kept separate from where anyone was born.
+
+    A muhurat's sunrise, Rahu Kala, chogadiya and rising sign belong to the
+    event's place, and its clock times to the event's zone on each scanned date
+    (bphs_core.event_clock). All three fields are given together or not at all;
+    without them a scan uses the person's own coordinates and fixed offset, as
+    it always has.
+    """
+    event_latitude: float | None = Field(None, ge=-90, le=90, allow_inf_nan=False)
+    event_longitude: float | None = Field(None, ge=-180, le=180, allow_inf_nan=False)
+    event_timezone: Annotated[
+        str | None, Field(min_length=1, max_length=64), AfterValidator(_known_zone)
+    ] = None
+
+    @model_validator(mode="after")
+    def _event_place_is_whole(self):
+        given = [
+            v is not None
+            for v in (self.event_latitude, self.event_longitude, self.event_timezone)
+        ]
+        if any(given) and not all(given):
+            raise ValueError(
+                "event_latitude, event_longitude and event_timezone are given "
+                "together or not at all"
+            )
+        return self
+
+    def event_coordinates(self, latitude: float, longitude: float) -> tuple[float, float]:
+        """The event's coordinates, or the given fallback when none were sent."""
+        if self.event_timezone is None:
+            return latitude, longitude
+        return self.event_latitude, self.event_longitude
+
+
+class MuhurtRequest(BoundedPersonFields, EventPlaceFields):
     # Inherits the bounded name / birth_place and the ephemeris-range-checked
     # birth_date from BoundedPersonFields (see PersonalDataIn / FamilyMember), so
     # this model can no longer accept an oversized name (request/log-inflation) or
@@ -713,7 +756,7 @@ class MuhurtResponse(BaseModel):
 
 # --- Lagna Shuddhi (electional muhurat) ---
 
-class LagnaShuddhiRequest(BoundedPersonFields):
+class LagnaShuddhiRequest(BoundedPersonFields, EventPlaceFields):
     # Inherits the bounded name / birth_place / ephemeris-range birth_date from
     # BoundedPersonFields (see MuhurtRequest); the fields below are scan-specific.
     birth_time: time
@@ -789,7 +832,7 @@ class FamilyMember(BoundedPersonFields):
     timezone_offset_hours: float = Field(ge=-12, le=14, allow_inf_nan=False)
 
 
-class FamilyLagnaShuddhiRequest(BaseModel):
+class FamilyLagnaShuddhiRequest(EventPlaceFields):
     members: list[FamilyMember]
     start_date: BoundedScanStartDate
     end_date: BoundedScanEndDate
@@ -805,7 +848,7 @@ class FamilyMemberSample(LagnaShuddhiSample):
 
 
 class FamilyLagnaShuddhiResponse(BaseModel):
-    instant: str | None                         # "YYYY-MM-DD HH:MM" (local, member[0] tz) | None
+    instant: str | None                         # "YYYY-MM-DD HH:MM" (local: the event zone, else member[0]'s offset) | None
     best_window: TimeWindow | None              # tolerance band around instant
     score: float                                # joint min-score across members
     score_100: int = 0                          # round(score * 100) — display scale
