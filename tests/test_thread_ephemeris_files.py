@@ -6,7 +6,8 @@ tests/test_response_determinism.py::test_short_lived_threads_answer_exactly_like
 These two pin the mechanism: the closer is registered by the per-thread
 initialiser and fires on the owning thread as it ends, and a finalizer that
 somehow runs on a different thread refuses to close, because ``swe.close()``
-would reset THAT thread's path and ayanamsa instead.
+would reset THAT thread's sidereal mode to the library default (Fagan/Bradley)
+instead; the ephemeris path survives a close.
 """
 from __future__ import annotations
 

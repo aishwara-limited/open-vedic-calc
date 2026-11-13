@@ -882,9 +882,11 @@ class _ThreadEphemerisFiles:
     CPython clears a thread's ``threading.local`` values on that thread as it
     exits, so ``__del__`` runs there and ``swe.close()`` releases exactly the
     files that thread opened. ``swe.close()`` acts only on the CALLING thread's
-    state, so if the finalizer ever ran on another thread, closing would reset
-    that other thread's path and ayanamsa instead (and its cached "initialised"
-    flag would stop them being re-applied); it refuses and logs. It does not
+    state: with pyswisseph 2.10.03 it keeps the ephemeris path but resets the
+    sidereal mode to the library default (Fagan/Bradley, about 0.88 deg off
+    Lahiri at J2000). So if the finalizer ever ran on another thread, closing
+    would silently put that other thread on the wrong ayanamsa, and its cached
+    "initialised" flag would stop Lahiri being re-applied; it refuses and logs. It does not
     take ``EPHEMERIS_LOCK``: it touches only the exiting thread's own state, and
     a thread blocking on the lock while it exits would deadlock any holder that
     is waiting for that thread to finish.
