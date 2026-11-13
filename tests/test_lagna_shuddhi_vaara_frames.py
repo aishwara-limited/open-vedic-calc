@@ -153,7 +153,7 @@ def _stub_days(monkeypatch, eclipse_on: dt.date):
 def test_scan_days_hand_an_instant_its_vaara_and_its_own_dates_flags(monkeypatch):
     first = last = dt.date(2026, 12, 16)
     _stub_days(monkeypatch, eclipse_on=first)
-    days = ls._ScanDays.build(None, first, last, None, None)
+    days = ls._ScanDays(None, first, last, None, None)
     # 00:15 on the 16th: Nishita of the 15th's vaara, eclipse flag of the 16th.
     view, m = days.locate("2026-12-16", 15)
     assert view["date"] == "2026-12-15" and m == 1440 + 15
@@ -173,8 +173,8 @@ def test_scan_days_hand_an_instant_its_vaara_and_its_own_dates_flags(monkeypatch
 def test_scan_days_flag_after_midnight_follows_the_next_date(monkeypatch):
     first = last = dt.date(2026, 12, 16)
     _stub_days(monkeypatch, eclipse_on=dt.date(2026, 12, 17))
-    days = ls._ScanDays.build(None, first, last, None, None)
-    vaara = days.vaaras[first]
+    days = ls._ScanDays(None, first, last, None, None)
+    vaara = days.vaara(first)
     assert vaara.views[0]["is_eclipse_day"] is False
     assert vaara.views[1]["is_eclipse_day"] is True
     with pytest.raises(LookupError):

@@ -756,7 +756,6 @@ class _Vaara:
     views: tuple[dict, dict]
 
 
-@dataclass(frozen=True)
 class _ScanDays:
     """The vaaras a scan of civil dates *first* .. *last* needs, for one place.
 
@@ -769,69 +768,94 @@ class _ScanDays:
     are computed beyond the request -- and one of them can fail for the same
     reasons as a requested day (a polar day frame), which then fails the scan,
     naming that date.
+
+    Days are computed LAZILY, as the vaaras that need them are asked for, so
+    the solo scan interleaves one day's computation with the scoring of the
+    vaara before it -- the same rhythm the scan had when it computed and scored
+    a day at a time. Computing every day up front made a run of back-to-back
+    day-sized lock holds at the start of a scan, and a concurrent chart request
+    measurably waited behind it (tests/test_ephemeris_lock.py).
     """
-    origin: date                    # the civil date whose midnight is axis 0
-    vaaras: dict[date, _Vaara]
 
-    @classmethod
-    def build(cls, place: drik.Place, first: date, last: date,
-              birth_nakshatra: str | None,
-              birth_moon_sign: str | None) -> "_ScanDays":
-        origin = first - timedelta(days=1)
-        days: dict[date, dict] = {}
-        d = origin
-        while d <= last + timedelta(days=1):
-            days[d] = compute_muhurat_for_day(place, d, birth_nakshatra, birth_moon_sign)
-            d += timedelta(days=1)
-        placed = {
-            d: _place_day_windows(dd, (d - origin).days * _DAY_MINS)
-            for d, dd in days.items()
+    def __init__(self, place: drik.Place, first: date, last: date,
+                 birth_nakshatra: str | None,
+                 birth_moon_sign: str | None) -> None:
+        self._place = place
+        self._birth = (birth_nakshatra, birth_moon_sign)
+        self.origin = first - timedelta(days=1)    # its midnight is axis 0
+        self.last_day = last + timedelta(days=1)   # the last day computed
+        self._days: dict[date, dict] = {}
+        self._placed: dict[date, dict[str, list[tuple[int, int, dict]]]] = {}
+        self._vaaras: dict[date, _Vaara] = {}
+
+    def vaara_dates(self) -> list[date]:
+        """The vaaras an instant on the requested dates can lie in, in order."""
+        n = (self.last_day - self.origin).days
+        return [self.origin + timedelta(days=k) for k in range(n)]
+
+    def _day(self, d: date) -> dict:
+        if d not in self._days:
+            dd = compute_muhurat_for_day(self._place, d, *self._birth)
+            self._days[d] = dd
+            self._placed[d] = _place_day_windows(dd, (d - self.origin).days * _DAY_MINS)
+        return self._days[d]
+
+    def vaara(self, d: date) -> _Vaara:
+        if d in self._vaaras:
+            return self._vaaras[d]
+        nxt = d + timedelta(days=1)
+        midnight = (d - self.origin).days * _DAY_MINS
+        lo = midnight + _hhmm_to_mins(self._day(d)["sunrise"])
+        hi = midnight + _DAY_MINS + _hhmm_to_mins(self._day(nxt)["sunrise"])
+        lists: dict[str, list[dict]] = {key: [] for key in _WINDOW_LISTS}
+        # Only the neighbouring days can reach this vaara (see the class
+        # docstring); each list keeps its served order, day by day.
+        for f in (d + timedelta(days=k) for k in range(-2, 3)):
+            if not self.origin <= f <= self.last_day:
+                continue
+            self._day(f)
+            for key in _WINDOW_LISTS:
+                for s, e, w in self._placed[f][key]:
+                    s, e = max(s, lo), min(e, hi)
+                    if e > s:
+                        lists[key].append({
+                            **w,
+                            "start": _ext_hhmm(s - midnight),
+                            "end": _ext_hhmm(e - midnight),
+                        })
+        view = {**self._days[d], **lists, "date": d.isoformat()}
+        after_midnight = {
+            **view,
+            "is_eclipse_day": self._days[nxt].get("is_eclipse_day"),
+            "is_adhik_maasa": self._days[nxt].get("is_adhik_maasa"),
         }
-        vaaras: dict[date, _Vaara] = {}
-        for d in sorted(days)[:-1]:
-            nxt = d + timedelta(days=1)
-            midnight = (d - origin).days * _DAY_MINS
-            lo = midnight + _hhmm_to_mins(days[d]["sunrise"])
-            hi = midnight + _DAY_MINS + _hhmm_to_mins(days[nxt]["sunrise"])
-            lists: dict[str, list[dict]] = {key: [] for key in _WINDOW_LISTS}
-            # Only the neighbouring days can reach this vaara (see the class
-            # docstring); each list keeps its served order, day by day.
-            for f in (d + timedelta(days=k) for k in range(-2, 3)):
-                if f not in placed:
-                    continue
-                for key in _WINDOW_LISTS:
-                    for s, e, w in placed[f][key]:
-                        s, e = max(s, lo), min(e, hi)
-                        if e > s:
-                            lists[key].append({
-                                **w,
-                                "start": _ext_hhmm(s - midnight),
-                                "end": _ext_hhmm(e - midnight),
-                            })
-            view = {**days[d], **lists, "date": d.isoformat()}
-            after_midnight = {
-                **view,
-                "is_eclipse_day": days[nxt].get("is_eclipse_day"),
-                "is_adhik_maasa": days[nxt].get("is_adhik_maasa"),
-            }
-            vaaras[d] = _Vaara(lo, hi, midnight, (view, after_midnight))
-        return cls(origin, vaaras)
+        self._vaaras[d] = _Vaara(lo, hi, midnight, (view, after_midnight))
+        return self._vaaras[d]
 
-    def candidates(self, first: date, last: date, step_mins: int) -> set[tuple[str, int]]:
-        """(civil date, minute of day) of every candidate on *first* .. *last*.
+    def candidates_in(self, d: date, first: date, last: date,
+                      step_mins: int) -> list[tuple[str, int]]:
+        """(civil date, minute of day) of the candidates of vaara *d* that fall
+        on *first* .. *last*, in time order.
 
         The step is applied to the minute of the CIVIL day, as it always was,
         so samples land on genuine step-minute clock marks.
         """
+        v = self.vaara(d)
         lo = (first - self.origin).days * _DAY_MINS
         hi = ((last - self.origin).days + 1) * _DAY_MINS
+        out: list[tuple[str, int]] = []
+        for m in _candidate_minutes(v.views[0]):
+            axis = v.midnight + m
+            if lo <= axis < hi and (axis % _DAY_MINS) % step_mins == 0:
+                civil = self.origin + timedelta(days=axis // _DAY_MINS)
+                out.append((civil.isoformat(), axis % _DAY_MINS))
+        return out
+
+    def candidates(self, first: date, last: date, step_mins: int) -> set[tuple[str, int]]:
+        """Every candidate on *first* .. *last*, across all the vaaras."""
         out: set[tuple[str, int]] = set()
-        for v in self.vaaras.values():
-            for m in _candidate_minutes(v.views[0]):
-                axis = v.midnight + m
-                if lo <= axis < hi and (axis % _DAY_MINS) % step_mins == 0:
-                    civil = self.origin + timedelta(days=axis // _DAY_MINS)
-                    out.add((civil.isoformat(), axis % _DAY_MINS))
+        for d in self.vaara_dates():
+            out.update(self.candidates_in(d, first, last, step_mins))
         return out
 
     def locate(self, date_str: str, time_mins: int) -> tuple[dict, int]:
@@ -839,8 +863,10 @@ class _ScanDays:
         civil = date.fromisoformat(date_str)
         axis = (civil - self.origin).days * _DAY_MINS + time_mins
         for d in (civil, civil - timedelta(days=1)):
-            v = self.vaaras.get(d)
-            if v is not None and v.sunrise <= axis < v.next_sunrise:
+            if not self.origin <= d < self.last_day:
+                continue
+            v = self.vaara(d)
+            if v.sunrise <= axis < v.next_sunrise:
                 m = axis - v.midnight
                 return v.views[0 if m < _DAY_MINS else 1], m
         raise LookupError(f"{date_str} {_mins_to_hhmm(time_mins)} is outside the scanned vaaras")
@@ -1192,8 +1218,12 @@ def scan_lagna_shuddhi(
     # against the vaara that contains it (see _ScanDays). The step filters the
     # actual minute of the civil day, not an enumeration index, so samples
     # land on genuine step_mins-minute clock marks.
-    days = _ScanDays.build(place, start_dt, end_dt, birth_nakshatra, birth_moon_sign)
-    for date_str, time_mins in sorted(days.candidates(start_dt, end_dt, step_mins)):
+    days = _ScanDays(place, start_dt, end_dt, birth_nakshatra, birth_moon_sign)
+    candidates = (
+        c for d in days.vaara_dates()
+        for c in days.candidates_in(d, start_dt, end_dt, step_mins)
+    )
+    for date_str, time_mins in candidates:
         day_data, vaara_mins = days.locate(date_str, time_mins)
         jd = _jd_for_local(date_str, time_mins, tz_offset)
         lagna_sign, lagna_lord, lagna_long = compute_lagna_at_jd(jd, lat, lon)
@@ -1379,7 +1409,7 @@ def scan_family_lagna_shuddhi(
     # _ScanDays): an instant is scored for every member against the vaara that
     # contains it at THAT member's place.
     member_days = [
-        _ScanDays.build(
+        _ScanDays(
             utils.make_place(m["name"], m["lat"], m["lon"], m["tz_offset"]),
             start_dt, end_dt, m.get("birth_nakshatra"), m.get("birth_moon_sign"),
         )
