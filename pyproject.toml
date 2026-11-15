@@ -33,7 +33,7 @@ dependencies = [
     # under FLG_TRUEPOS. The 4.8.6 -> 4.8.7 bump was taken deliberately, and the
     # declaration re-derived, in the reviewed change that moved this line; see
     # bphs_core/utils.py (POSITION_FLAGS) and tests/test_position_flags.py.
-    "pyjhora==4.8.7",
+    "pyjhora==5.0.0",
     "numpy>=1.23.0",
     # pyjhora undeclared runtime deps -- imported by jhora/utils.py at module
     # load; do not remove while pyjhora is a dependency.
