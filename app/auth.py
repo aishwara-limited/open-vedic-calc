@@ -70,6 +70,25 @@ else:
     )
 
 
+def _same_token(presented: str, expected: str) -> bool:
+    """Constant-time equality of two tokens, defined for EVERY string.
+
+    ``hmac.compare_digest`` refuses a ``str`` holding any non-ASCII character
+    (``TypeError``), and *presented* is whatever the client put in the header --
+    the server decodes header bytes as Latin-1, so one byte above 0x7F is
+    enough. Comparing the two as ``str`` therefore turned a wrong token into an
+    unhandled exception and a 500. Both sides are encoded the same way and
+    compared as bytes instead, where ``compare_digest`` accepts anything.
+    ``surrogatepass`` makes the encoding total as well, so there is no input
+    for which this raises: a value that is not the token is simply not equal.
+    Contract: tests/test_auth_non_ascii_token.py.
+    """
+    return hmac.compare_digest(
+        presented.encode("utf-8", "surrogatepass"),
+        expected.encode("utf-8", "surrogatepass"),
+    )
+
+
 def require_token(
     x_calc_service_token: str = Header(default=""),
 ) -> None:
@@ -99,7 +118,7 @@ def require_token(
         )
         return
 
-    if not hmac.compare_digest(x_calc_service_token, expected):
+    if not _same_token(x_calc_service_token, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing service token",

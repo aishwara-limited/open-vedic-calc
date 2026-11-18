@@ -57,6 +57,10 @@ DEFAULT_MAX_JOBS = int(os.environ.get("JOB_STORE_MAX_JOBS", "1000"))
 @dataclass
 class Job:
     id: str
+    # Which scan this job runs, as named by the route that submitted it. The
+    # store is shared by scans whose results have different shapes, and a job's
+    # result is only meaningful to the poll route of its own kind.
+    kind: str
     status: JobStatus = "pending"
     result: Any = None
     error: str | None = None
@@ -113,16 +117,19 @@ class JobStore:
         while len(self._jobs) > self._max_jobs:
             self._jobs.popitem(last=False)
 
-    def submit(self, fn: Callable[[], Any]) -> str:
+    def submit(self, fn: Callable[[], Any], *, kind: str) -> str:
         """Register a new job and hand its execution to the background pool.
 
         Returns the job id immediately; ``fn`` has not necessarily started
         running yet by the time this call returns (it may still be queued
         behind other jobs in the pool) -- that is the point: submission is
         O(1) and never waits on the scan itself.
+
+        ``kind`` names the scan and is required: ``get`` hands a job back only
+        to a caller asking for that kind.
         """
         job_id = uuid.uuid4().hex
-        job = Job(id=job_id)
+        job = Job(id=job_id, kind=kind)
         with self._lock:
             self._jobs[job_id] = job
             self._evict_over_capacity_locked()
@@ -144,18 +151,25 @@ class JobStore:
         self._executor.submit(_run)
         return job_id
 
-    def get(self, job_id: str) -> Job | None:
+    def get(self, job_id: str, *, kind: str) -> Job | None:
         """Return a point-in-time snapshot of the job, or None if unknown.
+
+        A job of another ``kind`` is unknown to this caller, in every state it
+        can be in. Each poll route has its own response model; a finished job
+        looked up by id alone and handed to the other route's model failed
+        response validation and surfaced as a 500, while the same request
+        answered 200 for as long as the job was still running.
 
         A copy is returned (rather than the live object) so a caller can
         never observe or mutate a torn/partial write from the worker thread.
         """
         with self._lock:
             job = self._jobs.get(job_id)
-            if job is None:
+            if job is None or job.kind != kind:
                 return None
             return Job(
                 id=job.id,
+                kind=job.kind,
                 status=job.status,
                 result=job.result,
                 error=job.error,

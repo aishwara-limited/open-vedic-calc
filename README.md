@@ -91,7 +91,7 @@ that differs from another tool can be explained rather than guessed at:
 | Planetary position frame | **Geometric** (`FLG_TRUEPOS`), sidereal, geocentric — flag word `65810` | `bphs_core/utils.py`, `POSITION_FLAGS` |
 | Primary house frame | **Whole-sign**, counted from the lagna sign | `bphs_core/chart.py` |
 | Bhava-Chalit cusps | Sidereal **Placidus**, supplementary only | `chalit_cusps` in the chart response |
-| Ascendant | Computed directly from `swe.houses`, not from the chart library | `bphs_core/chart.py` |
+| Ascendant and cusps | Computed directly from the Swiss Ephemeris sidereal house call, not from the chart library, in the **same frame as the planets**: nutation in longitude and the mean ayanamsa both removed — flag word `HOUSE_FLAGS` | `bphs_core/utils.py`, `sidereal_houses` |
 | Sunrise / sunset | **Disc centre at the true (geometric) horizon** — the classical Hindu convention; `rsmi` words `897` / `898` | `bphs_core/utils.py`, `RISE_FLAGS` / `SET_FLAGS` |
 | Ephemeris | Swiss Ephemeris data files; served date range **1800-01-02 … 2400-01-09**, narrowing to **… 2399-12-01** for the electional scan fields | baked into the images; bound in `app/schemas.py` |
 
@@ -254,3 +254,12 @@ The stable `code` is the field to branch on; `limb` names what failed. This is
 returned instead of an opaque `500`, and never as a `200` with an empty or
 partial result. On the async scan-job endpoints the same failure is reported in
 the job's `error` field on poll, not as an HTTP error on submit.
+
+Three further answers are worth knowing as a caller:
+
+- `birth_time` is a **local clock time** (`HH:MM[:SS[.ffffff]]`). A value that
+  carries a zone — `10:30:00+05:30`, `10:30:00Z` — or a bare number is refused
+  with a `422`; the offset from UTC is given in `timezone_offset_hours`.
+- A scan job is polled on the route of the scan that created it. Its id on the
+  other scan's job route is a `404`, the same as an id that was never issued.
+- A wrong `X-Calc-Service-Token` is a `401` whatever bytes it holds.

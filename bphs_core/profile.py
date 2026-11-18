@@ -252,6 +252,23 @@ Reducing the step improves precision at the cost of ~4× the computation per
 """
 
 
+_SADE_SATI_HORIZON_YEARS: int = 80
+"""How far past the birth date sade_sati_lifetime sweeps, in years."""
+
+_DAYS_PER_YEAR: float = 365.25
+"""Length of one of those years in days.
+
+The same year every dasha period in this engine is projected with (the
+``timedelta(days=yrs * 365.25)`` arithmetic of
+``bphs_core/dashas.py::vimshottari_mahadashas``), so "eighty years on" means one
+thing in the dasha timeline and in this sweep. The horizon is counted in days
+from the birth date and is never a calendar anniversary: the anniversary of a
+29 February birth does not exist in a year that is not a leap year, and building
+it raised for every such birth whose eightieth year is 1900, 2100, 2200 or 2300.
+Contract: tests/test_leap_day_birth_profile.py.
+"""
+
+
 def sade_sati_lifetime(snapshot: ChartSnapshot, birth_date: date) -> list[dict]:
     """Return all Sade Sati periods from birth to birth+80 years.
 
@@ -272,11 +289,12 @@ def sade_sati_lifetime(snapshot: ChartSnapshot, birth_date: date) -> list[dict]:
 
     moon_idx = utils.SIGNS.index(moon.sign)
 
-    # Quarter-year steps over 80 years
+    # Quarter-year steps over 80 years, the horizon counted in days (see
+    # _DAYS_PER_YEAR): a day count exists for every birth date.
     periods: list[dict] = []
     step = timedelta(days=_SADE_SATI_SCAN_STEP_DAYS)
     scan_date = datetime(birth_date.year, birth_date.month, birth_date.day)
-    end_date = datetime(birth_date.year + 80, birth_date.month, birth_date.day)
+    end_date = scan_date + timedelta(days=_SADE_SATI_HORIZON_YEARS * _DAYS_PER_YEAR)
 
     active: dict | None = None  # current open Sade Sati window
     prev_phase: str | None = None

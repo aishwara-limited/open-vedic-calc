@@ -373,9 +373,10 @@ apply_lunar_node_model()
 # golden stayed green because the served numbers did not move).
 #
 # SCOPE, stated rather than left to be discovered. This is the PLANETARY POSITION
-# word only. The ascendant and Bhava-Chalit cusps come from
-# ``swe.houses(jd_utc, lat, lon, b"P")`` in chart.py, which takes no flag word at
-# all; sunrise/sunset use pyjhora's separate ``drik.RISE_FLAGS`` /
+# word only. The ascendant and Bhava-Chalit cusps come from ``sidereal_houses``
+# below, whose own word, ``HOUSE_FLAGS``, is declared beside it (it puts them in
+# the frame this word puts the grahas in); sunrise/sunset use pyjhora's separate
+# ``drik.RISE_FLAGS`` /
 # ``drik.SET_FLAGS`` (measured 897 / 898 on 4.8.6 and re-measured 897 / 898 on
 # the 4.8.7 resolve, so they did not move on this bump -- and they are declared
 # in their own right below).
@@ -1255,6 +1256,71 @@ def graha_sidereal_longitude(jd_utc: float, graha: str) -> float:
             "other), and a raw int cannot say which space it belongs to."
         )
     return drik.sidereal_longitude(jd_utc, body)
+
+
+# ---------------------------------------------------------------------------
+# House-frame word: DECLARED, so the ascendant is in the grahas' frame.
+#
+# A sidereal longitude is measured from a point fixed among the stars. The
+# tropical longitude of date is measured from the TRUE equinox, which nutation
+# swings along the ecliptic by up to about 19 arcsec over 18.6 years (measured
+# -18.97 to +18.93 arcsec at one-day steps across the served span), so
+#
+#     sidereal = tropical(true equinox of date)
+#                - nutation in longitude - mean ayanamsa
+#
+# That is the frame POSITION_FLAGS serves every graha in: with FLG_SIDEREAL the
+# ephemeris leaves nutation out of the position and subtracts the mean
+# ayanamsa. It is the consistent choice, and the reverse is not available:
+# putting the nutation back would make every sidereal longitude wobble against
+# the stars it is measured from.
+#
+# The ascendant and the Bhava-Chalit cusps used to be built by hand as the
+# plain (tropical) house points minus the MEAN ayanamsa. That removes one of
+# the two terms and leaves the nutation in, so the lagna stood in a different
+# frame from the grahas by the nutation in longitude of the birth epoch --
+# measured +17.4 arcsec in 1936 and -18.2 arcsec in 1982 and 2001, about 1.2
+# seconds of birth time. It changed the lagna SIGN for a birth that close to a
+# sign boundary, and went into the varga lagna of every divisional chart and
+# into all twelve cusps.
+#
+# The house call's own sidereal mode removes both terms. Measured against the
+# plain house points minus the nutation in longitude (``swe.calc_ut`` with
+# ``ECL_NUT``) minus the mean ayanamsa (``swe.get_ayanamsa_ex_ut`` with
+# FLG_NONUT), it agrees to under 0.00001 arcsec for the ascendant and all twelve
+# cusps, in the Placidus and the equal-house system alike.
+#
+# The word is FLG_SIDEREAL and nothing else. FLG_NONUT is deliberately NOT
+# taken: on a house call it does not mean "express the result without
+# nutation", it means "compute the houses from the MEAN obliquity and the MEAN
+# sidereal time" -- a different horizon, not the same point in another frame
+# (measured against the word declared here: 0.6 to 77 arcsec apart over four
+# charts, the largest at 64 degrees of latitude). Like the position word it
+# reads the THREAD-local sidereal mode, so it
+# is only ever issued from ``sidereal_houses``, which carries the decorator
+# that applies that state.
+#
+# Contract: tests/test_ascendant_reference_frame.py.
+# ---------------------------------------------------------------------------
+HOUSE_FLAGS = swe.FLG_SIDEREAL
+
+
+@serialized_ephemeris
+def sidereal_houses(
+    jd_utc: float, latitude: float, longitude: float, house_system: bytes
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """``(cusps, ascmc)`` at a UTC Julian Day, sidereal (Lahiri), in [0, 360).
+
+    The twelve cusps and the ascendant (``ascmc[0]``) are in the frame every
+    graha is served in (rationale above). *house_system* is the one-byte
+    swisseph identifier; a system that is undefined at the given latitude
+    (Placidus beyond the polar circles) raises, exactly as the plain house call
+    does, and choosing the fallback is the caller's decision.
+    """
+    # Re-asserted on top of the decorator's per-thread guarantee, as
+    # Chart._compute does: this call reads the thread's sidereal mode.
+    drik.set_ayanamsa_mode('LAHIRI')
+    return swe.houses_ex(jd_utc, latitude, longitude, house_system, HOUSE_FLAGS)
 
 
 NAKSHATRAS = [

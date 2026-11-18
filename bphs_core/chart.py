@@ -65,7 +65,7 @@ class ChartSnapshot:
     chalit_cusps: list[float] = field(default_factory=list)   # sidereal Placidus cusps (Bhava-Chalit)
     jd: float = 0.0
     # 'placidus' normally; 'equatorial' when Placidus failed and the equatorial
-    # fallback (swe.houses(..., b"E")) was used instead. Consumers that need cusp-
+    # fallback (the b"E" house system) was used instead. Consumers that need cusp-
     # based secondary houses should check this field — the chalit_cusps are only
     # geometrically meaningful under the system that produced them. Defaulted so
     # synthetic test ChartSnapshot constructors (which predated this field) stay valid.
@@ -232,22 +232,29 @@ class Chart:
 
         # Ascendant/lagna is computed directly from swisseph's ascmc[0]. pyjhora's
         # rasi_chart()[0] subtracts the timezone a second time internally, so its
-        # lagna lands tz hours off; swisseph.houses takes true UT (jd_utc) and
-        # ascmc[0] is the correct ascendant, independent of the house system.
-        # (Same method as lagna_shuddhi.py.) Placidus is undefined beyond the
-        # polar circles; there the equal-house call below takes over.
+        # lagna lands tz hours off; the swisseph house call takes true UT (jd_utc)
+        # and ascmc[0] is the correct ascendant, independent of the house system.
+        # It is asked for SIDEREAL (utils.sidereal_houses), which puts the
+        # ascendant and the cusps in the frame the grahas above are in; taking the
+        # tropical points and subtracting the mean ayanamsa here left the nutation
+        # in longitude in them. Placidus is undefined beyond the polar circles;
+        # there the equal-house call below takes over.
         _house_system_used = "placidus"
         try:
-            cusps, ascmc = swe.houses(jd_utc, self.person.latitude, self.person.longitude, b"P")
+            cusps, ascmc = utils.sidereal_houses(
+                jd_utc, self.person.latitude, self.person.longitude, b"P"
+            )
         except Exception:
             logger.warning(
                 "placidus_fallback_equatorial lat=%s lon=%s",
                 self.person.latitude, self.person.longitude, exc_info=True,
             )
-            cusps, ascmc = swe.houses(jd_utc, self.person.latitude, self.person.longitude, b"E")
+            cusps, ascmc = utils.sidereal_houses(
+                jd_utc, self.person.latitude, self.person.longitude, b"E"
+            )
             _house_system_used = "equatorial"
 
-        sid_asc = (ascmc[0] - ayanamsa) % 360
+        sid_asc = ascmc[0]  # sidereal already, and in [0, 360)
         lagna_sign_index = int(sid_asc // 30)
         lagna_sign = utils.SIGNS[lagna_sign_index]
 
@@ -263,9 +270,10 @@ class Chart:
         # each whole-sign house (consumed as house->sign by yogas.py / strength.py).
         whole_sign_cusps = [(((lagna_sign_index + i) % 12) * 30.0) for i in range(12)]
 
-        # Secondary Bhava-Chalit houses use the Placidus cusps (sidereal). Kept as
-        # supplementary cusp-based data; never the primary interpretation house.
-        chalit_cusps = [((c - ayanamsa) % 360) for c in cusps]
+        # Secondary Bhava-Chalit houses use the Placidus cusps (sidereal, from the
+        # same call as the ascendant). Kept as supplementary cusp-based data;
+        # never the primary interpretation house.
+        chalit_cusps = list(cusps)
 
         # Build Rasi Chart with conjunctions and aspects
         rasi = {}
