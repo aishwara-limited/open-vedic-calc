@@ -589,7 +589,15 @@ class TestCompositeStrength:
 # ---------------------------------------------------------------------------
 
 class TestComputeCompat:
-    def test_total_within_bounds_and_kuta_count(self):
+    def test_total_within_bounds_and_kuta_count(self, monkeypatch):
+        # The mock charts hold only a Moon, so they have no classical
+        # Bhavabala (strength.compute_all_bhavabala needs all seven grahas and
+        # a real birth instant); the strength note is patched out, as in
+        # TestCompositeStrength below, since this test is about the kutas.
+        from bphs_core import strength
+        monkeypatch.setattr(strength, "compute_all_bhavabala", lambda _snap: [
+            strength.BhavabalaResult(h, 1.0, 1.0, 0.0, "average") for h in range(1, 13)
+        ])
         a = _mock_chart(
             {"Moon": {"sign": "Taurus", "nakshatra": "Rohini", "degrees": 5.0}},
             birth_date=datetime.date(1990, 1, 1),

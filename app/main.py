@@ -363,6 +363,32 @@ async def _muhurat_limb_error_handler(
     )
 
 
+# Stable machine-readable code for a birth whose classical Shadbala does not
+# exist. Part of the wire contract — see the handler below.
+STRENGTH_UNDEFINED_ERROR_CODE = "strength_undefined"
+
+
+@app.exception_handler(strength_mod.ShadbalaUndefinedError)
+async def _strength_undefined_handler(
+    request: Request, exc: strength_mod.ShadbalaUndefinedError
+) -> JSONResponse:
+    """Refuse, as a structured 422, a birth with no classical Shadbala.
+
+    Tribhaga, hora and vara bala (BPHS 27.12-13) are counted from sunrise and
+    sunset, so where the Sun neither rises nor sets around the birth (polar
+    day or night) the classical Shadbala, and the Bhavabala built on it, do
+    not exist. ``bphs_core.strength`` raises rather than fabricate a day
+    frame; the same convention as the muhurat limb handler above applies: a
+    well-formed request the engine cannot fulfil is a deterministic 422, not
+    an opaque 500. Fires on every route that reaches the strength module
+    (``/v1/strength`` and the Bhavabala note of ``/v1/compat``).
+    """
+    return JSONResponse(
+        status_code=422,
+        content={"detail": {"code": STRENGTH_UNDEFINED_ERROR_CODE, "message": str(exc)}},
+    )
+
+
 AUTH = [Depends(require_token)]
 
 

@@ -725,99 +725,38 @@ class TestYogasEdges:
 class TestStrengthEdges:
     """Edge branches covered here, named by function in bphs_core/strength.py:
 
-      - ``_sthana_bala`` — the final 7.5 fall-through for an unrecognised dignity.
-      - ``_dig_bala`` — planet absent from ``_DIG_BALA_PEAK`` → 0.0.
-      - ``_kaala_bala`` — the night-planet-at-night 30.0 arm, and the 15.0
-        fall-through taken when neither the day nor the night arm fires.
-      - ``_cheshta_bala`` — the Sun/Moon 0.0 arm and the retrograde 30.0 arm.
-      - ``compute_shadbala`` — planet absent from rasi_chart → ValueError.
+      - ``compute_shadbala`` — planet absent from rasi_chart → ValueError, and
+        a node (no Shadbala exists for Rahu or Ketu) → ValueError.
+      - ``_next_solar_event`` — swisseph reports no rise or set (polar day or
+        night) → ``ShadbalaUndefinedError``, never a fabricated day frame.
       - ``compute_ashtakavarga`` — the ``ref_idx.get(ref) is None`` continue for a
         reference point absent from the chart, and the ``planet is not None``
         single-planet return.
     """
 
-    def _chart_with(self, planets: dict, sun_house: int = 1,
-                    lagna: str = "Aries"):
-        """Build a snapshot where Sun is in `sun_house` (controls is_day)."""
-        rasi = {}
-        for name, d in planets.items():
-            rasi[name] = _planet(
-                sign=d.get("sign", "Aries"),
-                degrees=d.get("degrees", 10.0),
-                house=d.get("house", 1),
-                dignity=d.get("dignity", "neutral"),
-                retrograde=d.get("retrograde", False),
-                aspects=d.get("aspects", []),
-                planet_name=name,
-            )
-        # Place Sun in the desired house to flip day/night.
-        sun_sign_idx = (sun_house - 1) % 12
-        from bphs_core import utils
-        sun_sign = utils.SIGNS[sun_sign_idx]
-        if "Sun" not in rasi:
-            rasi["Sun"] = _planet(sun_sign, 5.0, sun_house, "neutral",
-                                  planet_name="Sun")
-        return _snapshot(rasi, lagna=lagna)
+    def test_compute_shadbala_refuses_a_node(self):
+        """compute_shadbala: BPHS 27 defines Shadbala for the seven grahas only."""
+        from bphs_core.strength import compute_shadbala
+        rahu = _planet("Aries", 10.0, 1, planet_name="Rahu")
+        with pytest.raises(ValueError, match="defined for the seven grahas, not Rahu"):
+            compute_shadbala(_snapshot({"Rahu": rahu}), "Rahu")
 
-    def test_sthana_bala_unknown_dignity_returns_7_5(self):
-        """_sthana_bala: unrecognised dignity string → the final 7.5 fall-through."""
-        from bphs_core.strength import _sthana_bala
-        pd = _planet("Aries", 10.0, 1, dignity="unrecognised_string")
-        assert _sthana_bala(pd, "Sun") == 7.5
-
-    def test_dig_bala_rahu_not_in_peak_table(self):
-        """_dig_bala: Rahu/Ketu absent from _DIG_BALA_PEAK (peak is None) → 0.0."""
-        from bphs_core.strength import _dig_bala
-        pd = _planet("Aries", 10.0, 1, planet_name="Rahu")
-        assert _dig_bala(pd, "Rahu") == 0.0
-        assert _dig_bala(pd, "Ketu") == 0.0
-
-    def test_kaala_bala_night_for_day_planet(self):
-        """_kaala_bala: Sun in house 1 (night) + day planet (Sun) → neither 30.0 arm
-        fires, so the 15.0 fall-through is taken (not 30)."""
-        from bphs_core.strength import _kaala_bala
-        # Sun in house 1 (1-6 range) → is_day=False
+    def test_bhavabala_refuses_a_chart_missing_a_graha(self):
+        """strength_inputs: every graha's Shadbala feeds some house's lord, so
+        a chart without all seven is refused before any ephemeris call."""
+        from bphs_core.strength import compute_all_bhavabala
         sun = _planet("Aries", 10.0, 1, planet_name="Sun")
-        snap = _snapshot({"Sun": sun})
-        # Day planet (Sun) during night → 15.0 not 30.0
-        assert _kaala_bala(snap, "Sun") == 15.0
+        with pytest.raises(ValueError, match=r"lacks \['Moon', 'Mars'"):
+            compute_all_bhavabala(_snapshot({"Sun": sun}))
 
-    def test_kaala_bala_day_for_night_planet(self):
-        """_kaala_bala: Sun in house 7 (day) + night planet (Moon) → neither 30.0 arm
-        fires, so the 15.0 fall-through is taken (not 30)."""
-        from bphs_core.strength import _kaala_bala
-        sun = _planet("Libra", 10.0, 7, planet_name="Sun")
-        moon = _planet("Aries", 10.0, 1, planet_name="Moon")
-        snap = _snapshot({"Sun": sun, "Moon": moon})
-        # Moon is a night planet; is_day=True (Sun in house 7) → 15.0
-        assert _kaala_bala(snap, "Moon") == 15.0
-
-    def test_kaala_bala_night_planet_during_night_is_30(self):
-        """_kaala_bala: the `not is_day and planet in night_planets` arm — night
-        planet (Moon) at night → 30.0."""
-        from bphs_core.strength import _kaala_bala
-        sun = _planet("Aries", 10.0, 1, planet_name="Sun")    # house 1 → night
-        moon = _planet("Taurus", 10.0, 2, planet_name="Moon")
-        snap = _snapshot({"Sun": sun, "Moon": moon})
-        assert _kaala_bala(snap, "Moon") == 30.0
-
-    def test_cheshta_bala_sun_returns_zero(self):
-        """_cheshta_bala: Sun → 0.0 (Sun/Moon have no Cheshta Bala)."""
-        from bphs_core.strength import _cheshta_bala
-        pd = _planet("Aries", 10.0, 1)
-        assert _cheshta_bala(pd, "Sun") == 0.0
-
-    def test_cheshta_bala_moon_returns_zero(self):
-        """_cheshta_bala: Moon → 0.0."""
-        from bphs_core.strength import _cheshta_bala
-        pd = _planet("Aries", 10.0, 1)
-        assert _cheshta_bala(pd, "Moon") == 0.0
-
-    def test_cheshta_bala_retrograde_planet_is_30(self):
-        """_cheshta_bala: retrograde branch — retrograde Mars → 30.0."""
-        from bphs_core.strength import _cheshta_bala
-        pd = _planet("Aries", 10.0, 1, retrograde=True)
-        assert _cheshta_bala(pd, "Mars") == 30.0
+    def test_no_solar_event_raises_undefined(self, monkeypatch):
+        """_next_solar_event: a non-zero rise_trans status (the Sun circumpolar
+        or below the horizon all day) raises ShadbalaUndefinedError."""
+        from bphs_core import strength
+        monkeypatch.setattr(strength.swe, "rise_trans",
+                            lambda *a, **k: (-2, (0.0,) * 10))
+        with pytest.raises(strength.ShadbalaUndefinedError):
+            strength._next_solar_event(2451545.0, 897, (15.6, 78.2, 0.0))
 
     def test_compute_shadbala_raises_for_missing_planet(self):
         """compute_shadbala: raises ValueError when the planet is not in rasi_chart."""

@@ -32,7 +32,7 @@ import time as time_mod
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time
 
-from bphs_core import lagna_shuddhi, muhurat, profile, transits, utils
+from bphs_core import lagna_shuddhi, muhurat, profile, strength, transits, utils
 from bphs_core.chart import Chart, PersonalData
 
 # Synthetic sample data (mirrors tests/conftest.py — no real personal data).
@@ -96,6 +96,10 @@ def test_every_c_library_entry_point_is_serialized():
         # in the electional/transit paths now routes through this single
         # entry point (see the id-space rationale in bphs_core/utils.py).
         utils.graha_sidereal_longitude,
+        utils.graha_ecliptic_latitude,
+        # Shadbala's own reads: ascendant and meridian, sunrise and sunset,
+        # the equation of time (the classical strength inputs).
+        strength.strength_inputs,
         # /healthz's Swiss/Moshier probe (CALC-1) -- called directly by the
         # route handler, not nested inside another decorated entry point.
         utils.probe_ephemeris_source,
