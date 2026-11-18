@@ -597,8 +597,9 @@ class TestYogasEdges:
 
       - ``_compute_yoga_strength`` — the empty-``dignities`` arm → 'moderate'.
       - ``detect_viparita_raja_yoga`` — the ``lord is None`` continue guard.
-      - ``detect_raja_yogas`` — the ``kh == th`` degenerate guard (house 1 sits in
-        both the kendra and the trikona list), and the ``seen_conjunction`` dedup.
+      - ``detect_raja_yogas`` — the house-1 guard of the single-graha rule (house
+        1 sits in both the kendra and the trikona list, and counts on neither
+        side there), and the ``seen_conjunction`` dedup.
       - ``detect_parivartana_yoga`` — an empty ``planets`` list (nothing to
         iterate), and the ``lord_of_a == p_a`` own-sign skip.
     """
@@ -662,8 +663,8 @@ class TestYogasEdges:
         assert isinstance(result, list)
 
     def test_raja_yoga_same_house_degenerate_skipped(self):
-        """detect_raja_yogas: the kh==th guard — house 1 counted in both the kendra
-        and the trikona list is skipped."""
+        """detect_raja_yogas: the house-1 guard — house 1, counted in both the
+        kendra and the trikona list, never makes its lord a single-graha yoga."""
         from bphs_core.yogas import detect_raja_yogas
         # Aries lagna: Mars lords house 1. House 1 is in both KENDRA and TRIKONA.
         # The (kh=1, th=1, kl==tl==Mars) case must NOT produce a spurious yoga.
@@ -674,7 +675,7 @@ class TestYogasEdges:
         # If a Raja Yoga appears it must not be the degenerate self-paired one.
         for y in yogas:
             if y.planets_involved == ["Mars"] and y.houses_involved == [1]:
-                pytest.fail("Degenerate kh==th Raja Yoga was not suppressed")
+                pytest.fail("Degenerate house-1 Raja Yoga was not suppressed")
 
     def test_raja_yoga_seen_conjunction_dedup(self):
         """detect_raja_yogas seen_conjunction dedup: the same kendra-lord/trikona-lord

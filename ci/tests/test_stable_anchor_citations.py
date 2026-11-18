@@ -101,7 +101,7 @@ measurement, not a shrug.
 
 1.  **Prose backtick mentions.**  CLAUDE.md is full of ``` `symbol` ``` and
     ``` `module.py`'s `symbol()` ``` written as English, not as citations
-    (``the `swe.houses` call in `Chart._compute```).  There is no syntactic
+    (``the `utils.sidereal_houses` call in `Chart._compute```).  There is no syntactic
     difference between a prose mention of a name and a citation to it, so
     reading them means guessing.  They are covered indirectly: nearly all of
     them name a symbol that also appears in a Form A/B/C anchor.

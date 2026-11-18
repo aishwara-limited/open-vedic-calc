@@ -99,6 +99,10 @@ def test_every_c_library_entry_point_is_serialized():
         # /healthz's Swiss/Moshier probe (CALC-1) -- called directly by the
         # route handler, not nested inside another decorated entry point.
         utils.probe_ephemeris_source,
+        # The sidereal house call behind the ascendant and the chalit cusps:
+        # it reads the thread's sidereal mode, so it needs the per-thread
+        # state the decorator applies as well as the lock.
+        utils.sidereal_houses,
     ]
     for fn in entry_points:
         assert getattr(fn, "_holds_ephemeris_lock", False), (

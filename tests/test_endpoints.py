@@ -189,27 +189,30 @@ def test_chart_includes_rashi_drishti():
 
 
 def test_chart_placidus_fallback_logs_warning(monkeypatch, caplog):
-    """FIX #6: when swe.houses raises on b'P', the equatorial fallback is used
+    """FIX #6: when the house call raises on b'P', the equatorial fallback is used
     and a 'placidus_fallback_equatorial' warning is emitted. Chart still returns 200."""
     import logging
 
     import bphs_core.chart as chart_mod
 
-    real_houses = chart_mod.swe.houses
-    call_count = {"n": 0}
+    real_houses = chart_mod.swe.houses_ex
+    systems_asked = []
 
-    def patched_houses(jd, lat, lon, hsys):
-        call_count["n"] += 1
+    def patched_houses(jd, lat, lon, hsys, flags):
+        systems_asked.append(hsys)
         if hsys == b"P":
             raise RuntimeError("placidus not available at polar latitude")
-        return real_houses(jd, lat, lon, hsys)
+        return real_houses(jd, lat, lon, hsys, flags)
 
-    monkeypatch.setattr(chart_mod.swe, "houses", patched_houses)
+    monkeypatch.setattr(chart_mod.swe, "houses_ex", patched_houses)
 
     with caplog.at_level(logging.WARNING, logger="bphs_core.chart"):
         r = client.post("/v1/chart", json=SAMPLE_A)
 
     assert r.status_code == 200, r.text
+    # The simulated failure was actually reached, and answered by the fallback.
+    assert systems_asked == [b"P", b"E"]
+    assert r.json()["house_system"] == "equatorial"
     assert any(
         "placidus_fallback_equatorial" in record.message
         for record in caplog.records

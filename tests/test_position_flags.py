@@ -107,9 +107,9 @@ Stated rather than left to be discovered. ``POSITION_FLAGS`` is the *planetary
 position* word only:
 
   * the ascendant and the Bhava-Chalit cusps come from
-    ``swe.houses(jd_utc, lat, lon, b"P")`` in ``bphs_core/chart.py``, which takes
-    no flag word at all (tropical cusps, with the ayanamsa subtracted by this
-    repo — see the Julian Day discipline in CLAUDE.md);
+    ``bphs_core.utils.sidereal_houses``, whose own word ``HOUSE_FLAGS`` is
+    declared beside it and puts them in the frame this word puts the grahas in
+    (contract ``tests/test_ascendant_reference_frame.py``);
   * sunrise/sunset use pyjhora's separate ``drik.RISE_FLAGS`` / ``drik.SET_FLAGS``
     words, measured 897 / 898 and IDENTICAL in 4.8.6 and 4.8.7, so they did not
     move — and are now declared in their own right by

@@ -372,7 +372,7 @@ class TestHouseSystemField:
         )
 
     def test_equatorial_fallback_detected(self, monkeypatch):
-        """When swe.houses raises for Placidus, the snapshot must carry
+        """When the house call raises for Placidus, the snapshot must carry
         house_system='equatorial'.
 
         The Placidus failure is simulated at a mid-latitude location, so this
@@ -383,15 +383,15 @@ class TestHouseSystemField:
 
         from bphs_core import chart as chart_mod
 
-        original_houses = swe_mod.houses
+        original_houses = swe_mod.houses_ex
 
-        def _failing_placidus(jd, lat, lon, hsys):
+        def _failing_placidus(jd, lat, lon, hsys, flags):
             if hsys == b"P":
                 raise RuntimeError("Placidus not available (test)")
-            return original_houses(jd, lat, lon, hsys)
+            return original_houses(jd, lat, lon, hsys, flags)
 
-        monkeypatch.setattr(swe_mod, "houses", _failing_placidus)
-        monkeypatch.setattr(chart_mod.swe, "houses", _failing_placidus)
+        monkeypatch.setattr(swe_mod, "houses_ex", _failing_placidus)
+        monkeypatch.setattr(chart_mod.swe, "houses_ex", _failing_placidus)
 
         from bphs_core.chart import Chart, PersonalData
         # Mid-latitude: the Placidus failure comes from the patch, not the sky

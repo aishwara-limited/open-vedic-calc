@@ -97,12 +97,31 @@ def detect_panchamahapurusha(snapshot: ChartSnapshot) -> list[Yoga]:
 
 
 def detect_raja_yogas(snapshot: ChartSnapshot) -> list[Yoga]:
-    # House 1 is both a kendra and a trikona, and the lagna lord is a primary
-    # Raja Yoga participant (lagna lord conjunct 5th/9th lord, or any kendra lord
-    # conjunct the lagna lord). House 1 must therefore stay in BOTH lists. The
-    # only case to exclude is the degenerate "house 1 paired with itself" — the
-    # lagna lord lording house 1 in both roles is the same house, not a two-house
-    # yoga karaka — guarded below by `kh == th`.
+    # BPHS ch. 34 (the chapter on yoga-karakas; sloka numbers in the standard
+    # Sanskrit numbering) gives two ways a kendra lordship and a kona lordship
+    # make a Raja Yoga.
+    #
+    # THE PAIR (34.11-12): the lord of a kendra and the lord of a kona related to
+    # each other. The relation detected here is the two standing in one sign.
+    # House 1 is both a kendra and a kona (34.3), and the lagna lord joining the
+    # 5th or 9th lord is such a pair, so house 1 stays in BOTH lists.
+    #
+    # THE YOGAKARAKA (34.13): one graha holding a kona lordship and a kendra
+    # lordship. Here house 1 does NOT count on either side. 34.3 calls the lagna
+    # itself auspicious for being kendra and kona at once; it does not make the
+    # lagna lord a yogakaraka through whichever other house that lord rules.
+    # The ascendant-by-ascendant slokas (34.19-44) name a single graha as the
+    # maker of the yoga for Taurus (34.23, Saturn), Cancer (34.27, Mars),
+    # Capricorn (34.40, Venus) and Aquarius (34.41, Venus), each ruling a
+    # kendra and a kona away from the lagna; Mars for Leo (34.29) and Saturn
+    # for Libra (34.33) are counted auspicious and hold the same pair of
+    # lordships. For the four dual-sign ascendants, whose lord also rules the
+    # 4th or 10th, the lord is never named alone (Gemini 34.25, Virgo 34.31,
+    # Sagittarius 34.37, Pisces 34.43). Counting house 1 there served a Raja
+    # Yoga on every Gemini, Virgo, Sagittarius and Pisces chart, wherever the
+    # lagna lord stood. The six that remain are the six get_yoga_karaka_planet
+    # lists; the two are pinned to each other, and to the text, by
+    # tests/test_raja_yoga_yogakaraka.py.
     yogas: list[Yoga] = []
     kendra_lords = [(h, _house_lord(snapshot, h)) for h in sorted(KENDRA)]
     trikona_lords = [(h, _house_lord(snapshot, h)) for h in sorted(TRIKONA)]
@@ -113,9 +132,9 @@ def detect_raja_yogas(snapshot: ChartSnapshot) -> list[Yoga]:
             if not kl or not tl:
                 continue
             if kl == tl:
-                # One planet lords both a kendra and a trikona (yoga karaka).
-                # Skip the same-house degenerate (house 1 counted in both lists).
-                if kh == th or kl in seen_single:
+                # One planet lords both a kendra and a trikona (yoga karaka):
+                # a kendra and a kona other than the lagna (see above).
+                if kh == 1 or th == 1 or kl in seen_single:
                     continue
                 seen_single.add(kl)
                 yogas.append(Yoga(

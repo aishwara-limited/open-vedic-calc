@@ -331,6 +331,45 @@ BoundedScanEndDate = _bounded_iso_date_str(
 BoundedReferenceDate = _bounded_date("reference_date", "Reference date")
 
 
+def _validate_local_clock_time(value: time) -> time:
+    # States the constraint, never the submitted value.
+    if value.tzinfo is not None:
+        raise ValueError(
+            "birth_time must be a local clock time (for example 06:30:00) with "
+            "no UTC offset or zone suffix, and not a number of seconds; the "
+            "offset from UTC is carried by timezone_offset_hours"
+        )
+    return value
+
+
+# A birth time carried on the wire as a clock time WITHOUT a zone.
+#
+# A bare `time` also accepts "10:30:00+05:30", "10:30:00Z" and a number (read
+# as seconds past midnight in UTC), and hands the engine a zone-aware value it
+# has no use for -- the offset from UTC travels in timezone_offset_hours.
+# Measured with a bare `time` on every person-like model: /v1/dashas and
+# /v1/compat compared the zone-aware birth instant with zone-free dates and
+# answered 500, while every other route dropped the zone without a word, so
+# "10:30:00Z" and "10:30:00+05:30" -- two instants five and a half hours apart
+# -- were served one and the same chart. The zone is refused rather than
+# stripped: stripping is that second behaviour made official.
+#
+# Every person-like model types its birth_time with this, never a bare `time`;
+# tests/test_birth_time_local_clock.py walks the models the routes declare and
+# reddens on any clock-time field that accepts a zone.
+LocalBirthTime = Annotated[
+    time,
+    AfterValidator(_validate_local_clock_time),
+    Field(
+        description=(
+            "Local clock time of birth, HH:MM[:SS[.ffffff]], with no UTC offset "
+            "or zone suffix. The offset from UTC is given separately in "
+            "timezone_offset_hours."
+        )
+    ),
+]
+
+
 class BoundedPersonFields(BaseModel):
     """Shared, bounded name / birth_place / birth_date fields for every
     person-like request model (PersonalDataIn, FamilyMember, ...).
@@ -352,7 +391,7 @@ class BoundedPersonFields(BaseModel):
 
 
 class PersonalDataIn(BoundedPersonFields):
-    birth_time: time
+    birth_time: LocalBirthTime
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
     timezone_offset_hours: float = Field(ge=-12, le=14, allow_inf_nan=False)
@@ -616,7 +655,7 @@ class MuhurtRequest(BoundedPersonFields):
     # this model can no longer accept an oversized name (request/log-inflation) or
     # an out-of-range birth year that would reach the ephemeris unguarded. The
     # fields below are muhurat-specific.
-    birth_time: time
+    birth_time: LocalBirthTime
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
     timezone_offset_hours: float = Field(ge=-12, le=14, allow_inf_nan=False)
@@ -716,7 +755,7 @@ class MuhurtResponse(BaseModel):
 class LagnaShuddhiRequest(BoundedPersonFields):
     # Inherits the bounded name / birth_place / ephemeris-range birth_date from
     # BoundedPersonFields (see MuhurtRequest); the fields below are scan-specific.
-    birth_time: time
+    birth_time: LocalBirthTime
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
     timezone_offset_hours: float = Field(ge=-12, le=14, allow_inf_nan=False)
@@ -783,7 +822,7 @@ class FamilyMember(BoundedPersonFields):
     # TestFamilyCoordBounds. name/birth_place/birth_date now come from
     # BoundedPersonFields so this model can no longer drop those bounds the
     # way it previously did (FR-MED-23 / FR-LOW-2).
-    birth_time: time
+    birth_time: LocalBirthTime
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
     timezone_offset_hours: float = Field(ge=-12, le=14, allow_inf_nan=False)

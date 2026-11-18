@@ -797,7 +797,16 @@ def family_lagna_shuddhi_endpoint(req: FamilyLagnaShuddhiRequest):
 # model used). Validation runs at submit time (422 to the caller); only the
 # scan itself runs on the background pool. Both paths share the exact same
 # ``_prepare_*`` pipeline above, so they cannot drift apart.
+#
+# The two scans share one job store and have different result shapes, so each
+# submit route tags its jobs with the kind below and each poll route asks for
+# that kind: a job id polled on the other scan's route is a 404, like an id
+# that was never issued (tests/test_scan_job_kind.py).
 # ---------------------------------------------------------------------------
+
+_JOB_KIND_LAGNA_SHUDDHI = "lagna-shuddhi"
+_JOB_KIND_FAMILY_LAGNA_SHUDDHI = "family-lagna-shuddhi"
+
 
 @app.post(
     "/v1/muhurat/lagna-shuddhi/async",
@@ -806,7 +815,7 @@ def family_lagna_shuddhi_endpoint(req: FamilyLagnaShuddhiRequest):
     dependencies=AUTH,
 )
 def lagna_shuddhi_async_submit(req: LagnaShuddhiRequest):
-    job_id = job_store.submit(_prepare_lagna_shuddhi(req))
+    job_id = job_store.submit(_prepare_lagna_shuddhi(req), kind=_JOB_KIND_LAGNA_SHUDDHI)
     return JobSubmitted(job_id=job_id, status="pending")
 
 
@@ -816,7 +825,7 @@ def lagna_shuddhi_async_submit(req: LagnaShuddhiRequest):
     dependencies=AUTH,
 )
 def lagna_shuddhi_job_status(job_id: str):
-    job = job_store.get(job_id)
+    job = job_store.get(job_id, kind=_JOB_KIND_LAGNA_SHUDDHI)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return LagnaShuddhiJobStatus(
@@ -834,7 +843,9 @@ def lagna_shuddhi_job_status(job_id: str):
     dependencies=AUTH,
 )
 def family_lagna_shuddhi_async_submit(req: FamilyLagnaShuddhiRequest):
-    job_id = job_store.submit(_prepare_family_lagna_shuddhi(req))
+    job_id = job_store.submit(
+        _prepare_family_lagna_shuddhi(req), kind=_JOB_KIND_FAMILY_LAGNA_SHUDDHI
+    )
     return JobSubmitted(job_id=job_id, status="pending")
 
 
@@ -844,7 +855,7 @@ def family_lagna_shuddhi_async_submit(req: FamilyLagnaShuddhiRequest):
     dependencies=AUTH,
 )
 def family_lagna_shuddhi_job_status(job_id: str):
-    job = job_store.get(job_id)
+    job = job_store.get(job_id, kind=_JOB_KIND_FAMILY_LAGNA_SHUDDHI)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return FamilyLagnaShuddhiJobStatus(
