@@ -151,6 +151,27 @@ class TestGrahaBoundary:
                        "_holds_ephemeris_lock", False)
 
 
+class TestGrahaLatitudeBoundary:
+    """``utils.graha_ecliptic_latitude``: the same name-keyed boundary, read
+    by Shadbala to decide a planetary war (Surya Siddhanta 7.18-21)."""
+
+    def test_computes_the_named_graha(self):
+        for graha, body in _REFERENCE_BODY.items():
+            want = swe.calc_ut(_JD, body, utils.POSITION_FLAGS)[0][1]
+            assert utils.graha_ecliptic_latitude(_JD, graha) == pytest.approx(want, abs=1e-12)
+        # Distinct bodies, distinct latitudes: an id-space slip would repeat one.
+        lats = {g: utils.graha_ecliptic_latitude(_JD, g) for g in ("Mars", "Mercury", "Venus")}
+        assert len(set(lats.values())) == 3
+
+    @pytest.mark.parametrize("bad", [0, 1, 2, 4, 7, "Rahu", "Ketu", "Uranus"])
+    def test_rejects_ints_nodes_and_unknown_names(self, bad):
+        with pytest.raises(KeyError):
+            utils.graha_ecliptic_latitude(_JD, bad)
+
+    def test_holds_the_ephemeris_lock(self):
+        assert getattr(utils.graha_ecliptic_latitude, "_holds_ephemeris_lock", False)
+
+
 # ---------------------------------------------------------------------------
 # Transits: every served placement is the named graha's position
 # ---------------------------------------------------------------------------

@@ -240,7 +240,7 @@ Endpoints under `/v1/`:
 ### Errors
 
 Request-validation failures return `422` with `{"detail": [...]}` (the standard
-FastAPI shape). One engine-compute failure has its own structured shape: when a
+FastAPI shape). Two engine-compute failures have their own structured shapes. When a
 muhurat/electional limb that decides *which* time can be recommended cannot be
 computed for the requested date/place, the engine raises rather than fabricating
 a day frame, and the synchronous routes surface that as a `422` naming the limb:
@@ -255,6 +255,15 @@ returned instead of an opaque `500`, and never as a `200` with an empty or
 partial result. On the async scan-job endpoints the same failure is reported in
 the job's `error` field on poll, not as an HTTP error on submit.
 
+The second is a birth with no classical Shadbala. Tribhaga, hora and vara bala
+(BPHS 27.12-13) are counted from sunrise and sunset, so where the Sun neither
+rises nor sets around the birth (polar day or night) `/strength`, and the
+Bhavabala note of `/compat`, return a `422` rather than a number:
+
+```json
+{"detail": {"code": "strength_undefined", "message": "..."}}
+```
+
 Three further answers are worth knowing as a caller:
 
 - `birth_time` is a **local clock time** (`HH:MM[:SS[.ffffff]]`). A value that
@@ -263,3 +272,18 @@ Three further answers are worth knowing as a caller:
 - A scan job is polled on the route of the scan that created it. Its id on the
   other scan's job route is a `404`, the same as an id that was never issued.
 - A wrong `X-Calc-Service-Token` is a `401` whatever bytes it holds.
+
+### Strength
+
+`/strength` computes Shadbala and Bhavabala itself (`bphs_core/strength.py`),
+by Brihat Parashara Hora Shastra chapter 27 in R. Santhanam's translation
+wherever BPHS gives a rule or a number, and by the Surya Siddhanta (Burgess)
+where BPHS is silent: the ahargana behind the year and month lords, the mean
+longitudes and sighroccas of the cheshta kendra, and the victor of a planetary
+war. Each verse is cited beside the code that applies it. All six components
+are served in rupas (virupas / 60); every sub-bala but drik and yuddha is held
+inside its classical range by reducing each arc past six signs before dividing
+by three. `minimum_bala` is the required Shadbala of BPHS 27.32-33.
+`bhava_adhipathi_bala` is the full Shadbala of the house lord, `bhava_drik` the
+bhava drishti bala (BPHS 27.29), and `bala_total` adds the bhava digbala
+(BPHS 27.28) to both.
