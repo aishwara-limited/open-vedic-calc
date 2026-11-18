@@ -1323,6 +1323,27 @@ def sidereal_houses(
     return swe.houses_ex(jd_utc, latitude, longitude, house_system, HOUSE_FLAGS)
 
 
+@serialized_ephemeris
+def graha_ecliptic_latitude(jd_utc: float, graha: str) -> float:
+    """Geocentric ecliptic latitude of *graha* at a UTC Julian Day, in degrees.
+
+    The same name-keyed boundary as ``graha_sidereal_longitude`` (rationale
+    above), for the five star grahas and the luminaries. Shadbala reads it to
+    decide a planetary war, whose victor stands to the north (Surya Siddhanta
+    7.18-21). The nodes lie on the ecliptic by definition and are refused, as
+    is every integer id.
+    """
+    body = _GRAHA_SWE_BODY.get(graha)
+    if body is None or graha == "Rahu":
+        raise KeyError(
+            f"unknown graha {graha!r}: expected one of "
+            f"{[g for g in _GRAHA_SWE_BODY if g != 'Rahu']}. Integer ids are "
+            "deliberately rejected (see graha_sidereal_longitude)."
+        )
+    position, _ = swe.calc_ut(jd_utc, body, POSITION_FLAGS)
+    return position[1]
+
+
 NAKSHATRAS = [
     "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra",
     "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
