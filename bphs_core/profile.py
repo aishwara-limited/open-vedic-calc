@@ -15,11 +15,12 @@ from .chart import ChartSnapshot
 from .compat import (
     _VARNA_LEVEL,
     _VARNA_NAMES,
-    _VASYA_GROUP,
     NAKSHATRA_GANA,
     NAKSHATRA_YONI,
+    _degree_in_sign,
     _mangal_dosha_raw,
     _nakshatra_nadi,
+    vasya_group,
 )
 
 logger = logging.getLogger(__name__)
@@ -136,8 +137,14 @@ def _varna(moon_sign: str) -> str:
     return _VARNA_NAMES.get(level, "Unknown")
 
 
-def _vasya(moon_sign: str) -> str:
-    return _VASYA_GROUP.get(moon_sign, "Unknown")
+def _vasya(moon_sign: str, degree_in_sign: float) -> str:
+    # Sagittarius and Capricorn change vasya group at 15 degrees, so the group
+    # needs the Moon's degree as well as its sign: see
+    # bphs_core/compat.py::vasya_group.
+    try:
+        return vasya_group(moon_sign, degree_in_sign)
+    except (KeyError, ValueError):
+        return "Unknown"
 
 
 def _yoni(moon_nak: str) -> str:
@@ -174,7 +181,7 @@ def avkahada_chakra(snapshot: ChartSnapshot) -> dict:
         "moon_sign":  sign,
         "moon_nakshatra": nak,
         "varna":      _varna(sign),
-        "vasya":      _vasya(sign),
+        "vasya":      _vasya(sign, _degree_in_sign(moon)),
         "yoni":       _yoni(nak),
         "gana":       _gana(nak),
         "nadi":       _nadi(nak),
