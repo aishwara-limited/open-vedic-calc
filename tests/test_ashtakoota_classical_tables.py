@@ -500,6 +500,7 @@ HASTA = _birth("1985-02-09")              # Virgo   ~16.3
 # Second halves of the two split signs, about 5 degrees past the split.
 PURVA_ASHADHA = _birth("1985-03-15")      # Sagittarius ~19.9
 SHRAVANA = _birth("1985-08-01")           # Capricorn   ~19.9
+ANURADHA = _birth("1985-07-27")           # Scorpio     ~10.6 (keeta)
 
 
 def _moon_nakshatra(client, person: dict) -> str:
@@ -514,6 +515,7 @@ def _moon_nakshatra(client, person: dict) -> str:
     (UTTARA_BHADRAPADA, "Uttara Bhadrapada"),
     (KRITTIKA, "Krittika"), (HASTA, "Hasta"),
     (PURVA_ASHADHA, "Purva Ashadha"), (SHRAVANA, "Shravana"),
+    (ANURADHA, "Anuradha"),
 ])
 def test_route_fixtures_land_in_the_intended_nakshatra(client, person, nak):
     assert _moon_nakshatra(client, person) == nak
@@ -559,8 +561,8 @@ def test_compat_request_schema_names_the_groom_and_the_bride():
     from app.schemas import CompatRequest
 
     fields = CompatRequest.model_fields
-    assert "GROOM" in (fields["person_a"].description or "")
-    assert "BRIDE" in (fields["person_b"].description or "")
+    assert (fields["person_a"].description or "").startswith("The GROOM")
+    assert (fields["person_b"].description or "").startswith("The BRIDE")
 
 
 def test_compat_route_scores_gana_with_person_a_as_the_groom(client):
@@ -582,6 +584,14 @@ def test_compat_route_serves_the_vasya_half_sign_split(client):
     # column jalchar -> 0.
     assert _kutas(client, SHRAVANA, ARDRA)["vasya"] == 0.0
     assert _kutas(client, ASHWINI_1, SHRAVANA)["vasya"] == 1.0
+
+
+def test_compat_route_scores_vasya_with_person_a_as_the_groom(client):
+    # The vasya table is not symmetric.  A keeta (Scorpio) groom with a
+    # chatushpada (Aries) bride: row chatushpada, column keeta -> 2.  The same
+    # two charts the other way round: row keeta, column chatushpada -> 1.
+    assert _kutas(client, ANURADHA, ASHWINI_1)["vasya"] == 2.0
+    assert _kutas(client, ASHWINI_1, ANURADHA)["vasya"] == 1.0
 
 
 def test_compat_route_serves_the_yoni_table(client):
