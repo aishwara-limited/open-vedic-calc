@@ -8,6 +8,23 @@ and the Nadi, Gana and Tara rules below follow the marriage chapter
 tabulated in common professional use. Each table cites its rule where it is
 defined, and tests/test_ashtakoota_classical_tables.py pins it, nakshatra by
 nakshatra, against the classical grouping typed in by hand.
+
+Direction.  The kootas are scored for an ORDERED pair: the first person is the
+GROOM (boy) and the second the BRIDE (girl).  Varna, Vasya and Gana give a
+different score when the two are swapped; Tara, Yoni, Graha Maitri, Bhakoot
+and Nadi do not.  ``compute_compat(snap_a, snap_b, ...)`` therefore reads
+``snap_a`` as the groom and ``snap_b`` as the bride, and ``/v1/compat`` states
+the same of ``person_a`` and ``person_b``.
+
+The Vasya, Yoni and Gana point tables are the North Indian tables published by
+saravali.de, as transcribed in PyJHora 4.8.7
+(``jhora/horoscope/match/compatibility.py``: ``VasiyaArray``, ``YoniArray`` and
+``gana_array``), with the bride's group on the rows and the groom's on the
+columns, as there.  They are typed out in this module rather than read from
+that library, so a dependency bump cannot move a served score.  Published
+tables disagree cell by cell for all three kootas; this one was chosen by the
+operator of this service, and the choice is recorded here so that it is never
+mistaken for a library default.
 """
 from __future__ import annotations
 
@@ -15,7 +32,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from . import utils
-from .chart import ChartSnapshot
+from .chart import ChartSnapshot, PlanetData
 from .dashas import vimshottari_mahadashas
 
 # ---------------------------------------------------------------------------
@@ -58,7 +75,12 @@ def _nakshatra_nadi(nak: str) -> str:
     return _NADI_NAMES[_NADI_SERPENTINE[idx % 6]]
 
 
-# Yoni: each nakshatra has an (animal, gender) pair
+# Yoni: each nakshatra has an (animal, gender) pair.  The animals are those of
+# the saravali.de table (PyJHora 4.8.7 ``yoni_mappings``, whose "Sheep" is the
+# goat, mesha).  That table carries no genders, so the genders are the common
+# North Indian list of the same family: every animal has one male and one
+# female star, except the mongoose, whose only star is Uttara Ashadha (male).
+# Genders do not enter the koota score; they are served by /v1/profile.
 NAKSHATRA_YONI: dict[str, tuple[str, str]] = {
     "Ashwini":          ("horse",    "male"),
     "Bharani":          ("elephant", "male"),
@@ -66,18 +88,18 @@ NAKSHATRA_YONI: dict[str, tuple[str, str]] = {
     "Rohini":           ("serpent",  "male"),
     "Mrigashira":       ("serpent",  "female"),
     "Ardra":            ("dog",      "female"),
-    "Punarvasu":        ("cat",      "male"),
+    "Punarvasu":        ("cat",      "female"),
     "Pushya":           ("goat",     "male"),
-    "Ashlesha":         ("cat",      "female"),
+    "Ashlesha":         ("cat",      "male"),
     "Magha":            ("rat",      "male"),
     "Purva Phalguni":   ("rat",      "female"),
-    "Uttara Phalguni":  ("cow",      "female"),
-    "Hasta":            ("buffalo",  "male"),
+    "Uttara Phalguni":  ("cow",      "male"),
+    "Hasta":            ("buffalo",  "female"),
     "Chitra":           ("tiger",    "female"),
-    "Swati":            ("buffalo",  "female"),
+    "Swati":            ("buffalo",  "male"),
     "Vishakha":         ("tiger",    "male"),
-    "Anuradha":         ("deer",     "male"),
-    "Jyeshtha":         ("deer",     "female"),
+    "Anuradha":         ("deer",     "female"),
+    "Jyeshtha":         ("deer",     "male"),
     "Mula":             ("dog",      "male"),
     "Purva Ashadha":    ("monkey",   "male"),
     "Uttara Ashadha":   ("mongoose", "male"),
@@ -85,20 +107,37 @@ NAKSHATRA_YONI: dict[str, tuple[str, str]] = {
     "Dhanishta":        ("lion",     "female"),
     "Shatabhisha":      ("horse",    "female"),
     "Purva Bhadrapada": ("lion",     "male"),
-    "Uttara Bhadrapada":("cow",      "male"),
+    "Uttara Bhadrapada":("cow",      "female"),
     "Revati":           ("elephant", "female"),
 }
 
-# Enemy animal pairs (mutual enemies)
-_YONI_ENEMIES: frozenset[frozenset] = frozenset({
-    frozenset(["horse",    "buffalo"]),
-    frozenset(["elephant", "lion"]),
-    frozenset(["goat",     "monkey"]),
-    frozenset(["serpent",  "mongoose"]),
-    frozenset(["dog",      "deer"]),
-    frozenset(["cat",      "rat"]),
-    frozenset(["cow",      "tiger"]),
-})
+# Yoni koota points (saravali.de table; PyJHora 4.8.7 ``YoniArray``).  Rows are
+# the bride's yoni and columns the groom's, both in _YONI_ORDER.  This table is
+# symmetric, so the yoni score does not depend on who is the groom.  Same
+# animal 4, friendly 3, neutral 2, unfriendly 1, sworn enemies 0; the seven
+# zero cells are the classical enemy pairs (horse-buffalo, elephant-lion,
+# goat-monkey, serpent-mongoose, dog-deer, cat-rat, cow-tiger).
+_YONI_ORDER: tuple[str, ...] = (
+    "horse", "elephant", "goat", "serpent", "dog", "cat", "rat",
+    "cow", "buffalo", "tiger", "deer", "monkey", "mongoose", "lion",
+)
+_YONI_POINTS: tuple[tuple[int, ...], ...] = (
+    # groom: ho el go se do ca ra co bu ti de mo mn li
+    (4, 2, 2, 3, 2, 2, 2, 1, 0, 1, 1, 3, 2, 1),  # bride horse
+    (2, 4, 3, 3, 2, 2, 2, 2, 3, 1, 2, 3, 2, 0),  # bride elephant
+    (2, 3, 4, 2, 1, 2, 1, 3, 3, 1, 2, 0, 3, 1),  # bride goat
+    (3, 3, 2, 4, 2, 1, 1, 1, 1, 2, 2, 2, 0, 2),  # bride serpent
+    (2, 2, 1, 2, 4, 2, 1, 2, 2, 1, 0, 2, 1, 1),  # bride dog
+    (2, 2, 2, 1, 2, 4, 0, 2, 2, 1, 3, 3, 2, 1),  # bride cat
+    (2, 2, 1, 1, 1, 0, 4, 2, 2, 2, 2, 2, 1, 2),  # bride rat
+    (1, 2, 3, 1, 2, 2, 2, 4, 3, 0, 3, 2, 2, 1),  # bride cow
+    (0, 3, 3, 1, 2, 2, 2, 3, 4, 1, 2, 2, 2, 1),  # bride buffalo
+    (1, 1, 1, 2, 1, 1, 2, 0, 1, 4, 1, 1, 2, 1),  # bride tiger
+    (1, 2, 2, 2, 0, 3, 2, 3, 2, 1, 4, 2, 2, 1),  # bride deer
+    (3, 3, 0, 2, 2, 3, 2, 2, 2, 1, 2, 4, 3, 2),  # bride monkey
+    (2, 2, 3, 0, 1, 2, 1, 2, 2, 2, 2, 3, 4, 2),  # bride mongoose
+    (1, 0, 1, 2, 1, 1, 2, 1, 1, 1, 1, 2, 2, 4),  # bride lion
+)
 
 # Varna level by Moon sign (rashi): Brahmin=4, Kshatriya=3, Vaishya=2, Shudra=1
 _VARNA_LEVEL: dict[str, int] = {
@@ -110,29 +149,71 @@ _VARNA_LEVEL: dict[str, int] = {
 
 _VARNA_NAMES: dict[int, str] = {4: "Brahmin", 3: "Kshatriya", 2: "Vaishya", 1: "Shudra"}
 
-# Vasya (magnetic control) group by Moon sign
-_VASYA_GROUP: dict[str, str] = {
-    "Aries":       "chatushpada",
-    "Taurus":      "chatushpada",
-    "Gemini":      "nara",
-    "Cancer":      "jalchar",
-    "Leo":         "vanchar",
-    "Virgo":       "nara",
-    "Libra":       "nara",
-    "Scorpio":     "keeta",
-    "Sagittarius": "nara",
-    "Capricorn":   "chatushpada",
-    "Aquarius":    "nara",
-    "Pisces":      "jalchar",
+# Vasya (vashya) group of the Moon (Muhurta Chintamani, Vivaha-prakarana,
+# vashya-koota), with the half-sign splits of the saravali.de table: the group
+# depends on the sign and, for Sagittarius and Capricorn only, on which half of
+# the sign the Moon occupies.
+#   chatushpada (quadruped): Aries, Taurus, Sagittarius 15-30, Capricorn 0-15
+#   nara (human):            Gemini, Virgo, Libra, Aquarius, Sagittarius 0-15
+#   jalchar (water):         Cancer, Pisces, Capricorn 15-30
+#   vanchar (wild):          Leo
+#   keeta (insect):          Scorpio
+# Each entry is (group for 0 <= degree < 15, group for 15 <= degree < 30).
+_VASYA_HALVES: dict[str, tuple[str, str]] = {
+    "Aries":       ("chatushpada", "chatushpada"),
+    "Taurus":      ("chatushpada", "chatushpada"),
+    "Gemini":      ("nara",        "nara"),
+    "Cancer":      ("jalchar",     "jalchar"),
+    "Leo":         ("vanchar",     "vanchar"),
+    "Virgo":       ("nara",        "nara"),
+    "Libra":       ("nara",        "nara"),
+    "Scorpio":     ("keeta",       "keeta"),
+    "Sagittarius": ("nara",        "chatushpada"),
+    "Capricorn":   ("chatushpada", "jalchar"),
+    "Aquarius":    ("nara",        "nara"),
+    "Pisces":      ("jalchar",     "jalchar"),
 }
 
-# Vasya control: sign → set of signs it controls
-_VASYA_CONTROLS: dict[str, set[str]] = {
-    "Leo":     {"Aries"},
-    "Cancer":  {"Scorpio"},
-    "Aquarius":{"Capricorn"},
-    "Virgo":   {"Pisces"},
-}
+# Vasya koota points (saravali.de table; PyJHora 4.8.7 ``VasiyaArray``).  Rows
+# are the bride's group and columns the groom's, both in _VASYA_ORDER.  The
+# table is NOT symmetric: a keeta groom scores 2 with a chatushpada or jalchar
+# bride, but a keeta bride scores only 1 with a chatushpada or jalchar groom.
+_VASYA_ORDER: tuple[str, ...] = ("chatushpada", "nara", "jalchar", "vanchar", "keeta")
+_VASYA_POINTS: tuple[tuple[float, ...], ...] = (
+    # groom: chatu nara jala vana keeta
+    (2.0, 0.5, 1.0, 0.0, 2.0),  # bride chatushpada
+    (0.5, 2.0, 0.0, 0.0, 0.0),  # bride nara
+    (1.0, 0.0, 2.0, 2.0, 2.0),  # bride jalchar
+    (0.0, 0.0, 2.0, 2.0, 0.0),  # bride vanchar
+    (1.0, 0.0, 1.0, 0.0, 2.0),  # bride keeta
+)
+
+
+def vasya_group(sign: str, degree_in_sign: float) -> str:
+    """The Moon's vasya group from its sign and its degree within that sign.
+
+    The split is at exactly 15 degrees: 15.0 belongs to the second half.  An
+    unknown sign raises KeyError and a degree outside [0, 30) raises
+    ValueError, rather than defaulting to a group.
+    """
+    first_half, second_half = _VASYA_HALVES[sign]
+    if not 0.0 <= degree_in_sign < 30.0:
+        raise ValueError(f"degree within sign must be in [0, 30), got {degree_in_sign!r}")
+    return first_half if degree_in_sign < 15.0 else second_half
+
+
+def _degree_in_sign(planet: PlanetData) -> float:
+    """Degree within the sign, from the unrounded longitude when it is carried.
+
+    ``PlanetData.degrees`` is rounded to four decimals, so a Moon at
+    14.99996 degrees reads 15.0 there and would land in the wrong half of
+    Sagittarius or Capricorn.  The rasi chart always carries the unrounded
+    ``longitude_abs``; the rounded field is used only for snapshots built
+    without it (hand-made test snapshots).
+    """
+    if planet.longitude_abs is not None:
+        return planet.longitude_abs % 30.0
+    return planet.degrees
 
 # ---------------------------------------------------------------------------
 # Planet relationship helpers
@@ -198,18 +279,19 @@ def _varna(sign_a: str, sign_b: str) -> tuple[float, str]:
     return score, interp
 
 
-def _vasya(sign_a: str, sign_b: str) -> tuple[float, str]:
-    ga = _VASYA_GROUP.get(sign_a, "nara")
-    gb = _VASYA_GROUP.get(sign_b, "nara")
-    if ga == gb:
-        return 2.0, "Both partners belong to the same vasya group, indicating natural magnetic harmony."
-    controlled_by_b = _VASYA_CONTROLS.get(sign_b, set())
-    if sign_a in controlled_by_b:
-        return 1.0, "One partner's sign falls within the vasya of the other, indicating a supportive power dynamic."
-    controlled_by_a = _VASYA_CONTROLS.get(sign_a, set())
-    if sign_b in controlled_by_a:
-        return 0.5, "Partial vasya relationship exists; one partner may feel less drawn than the other."
-    return 0.0, "The partners' vasya groups have no natural affinity, requiring effort to maintain attraction."
+def _vasya(groom_group: str, bride_group: str) -> tuple[float, str]:
+    """Vasya koota for a groom's and a bride's vasya group (see vasya_group)."""
+    score = _VASYA_POINTS[_VASYA_ORDER.index(bride_group)][_VASYA_ORDER.index(groom_group)]
+    pairing = f"{groom_group} groom and {bride_group} bride"
+    if groom_group == bride_group:
+        return score, f"Both partners belong to the same vasya group ({groom_group}), indicating natural magnetic harmony."
+    if score == 2.0:
+        return score, f"The {pairing} are fully compatible in vasya, indicating strong mutual attraction."
+    if score == 1.0:
+        return score, f"The {pairing} are partly compatible in vasya, indicating a supportive but uneven attraction."
+    if score == 0.5:
+        return score, f"The {pairing} are only slightly compatible in vasya; one partner may feel less drawn than the other."
+    return score, f"The {pairing} vasya groups have no natural affinity, requiring effort to maintain attraction."
 
 
 # Tara (Dina) koota (Muhurta Chintamani, Vivaha-prakarana, tara-koota): count
@@ -240,18 +322,23 @@ def _tara(nak_a: str, nak_b: str) -> tuple[float, str]:
 
 
 def _yoni(nak_a: str, nak_b: str) -> tuple[float, str]:
+    """Yoni koota; nak_a is the groom's Moon nakshatra, nak_b the bride's."""
     ya = NAKSHATRA_YONI.get(nak_a)
     yb = NAKSHATRA_YONI.get(nak_b)
     if not ya or not yb:
         return 2.0, "Yoni compatibility is moderate; standard biological-instinctive harmony expected."
     animal_a, _ = ya
     animal_b, _ = yb
+    score = float(_YONI_POINTS[_YONI_ORDER.index(animal_b)][_YONI_ORDER.index(animal_a)])
     if animal_a == animal_b:
-        return 4.0, f"Both nakshatras share the {animal_a} yoni, indicating deep instinctive and biological compatibility."
-    pair = frozenset([animal_a, animal_b])
-    if pair in _YONI_ENEMIES:
-        return 0.0, f"The {animal_a} and {animal_b} yoni are natural enemies, suggesting significant instinctive friction."
-    return 2.0, f"The {animal_a} and {animal_b} yoni are neutral toward each other, providing acceptable compatibility."
+        return score, f"Both nakshatras share the {animal_a} yoni, indicating deep instinctive and biological compatibility."
+    if score == 3.0:
+        return score, f"The {animal_a} and {animal_b} yoni are friendly, supporting good instinctive compatibility."
+    if score == 2.0:
+        return score, f"The {animal_a} and {animal_b} yoni are neutral toward each other, providing acceptable compatibility."
+    if score == 1.0:
+        return score, f"The {animal_a} and {animal_b} yoni are unfriendly, suggesting some instinctive friction."
+    return score, f"The {animal_a} and {animal_b} yoni are natural enemies, suggesting significant instinctive friction."
 
 
 def _graha_maitri(sign_a: str, sign_b: str) -> tuple[float, str]:
@@ -272,18 +359,35 @@ def _graha_maitri(sign_a: str, sign_b: str) -> tuple[float, str]:
     return score, interp
 
 
+# Gana koota points (saravali.de table; PyJHora 4.8.7 ``gana_array``).  Rows
+# are the bride's gana and columns the groom's, both in _GANA_ORDER.  The
+# table is directional: a deva groom with a manushya bride scores 5 but a
+# manushya groom with a deva bride 6, and a deva groom with a rakshasa bride
+# scores 1 but a rakshasa groom with a deva bride 0.
+_GANA_ORDER: tuple[str, ...] = ("deva", "manushya", "rakshasa")
+_GANA_POINTS: tuple[tuple[int, ...], ...] = (
+    # groom: deva manushya rakshasa
+    (6, 6, 0),  # bride deva
+    (5, 6, 0),  # bride manushya
+    (1, 0, 6),  # bride rakshasa
+)
+
+
 def _gana(nak_a: str, nak_b: str) -> tuple[float, str]:
+    """Gana koota; nak_a is the groom's Moon nakshatra, nak_b the bride's."""
     ga = NAKSHATRA_GANA.get(nak_a, "manushya")
     gb = NAKSHATRA_GANA.get(nak_b, "manushya")
+    score = float(_GANA_POINTS[_GANA_ORDER.index(gb)][_GANA_ORDER.index(ga)])
     if ga == gb:
-        return 6.0, f"Both partners are {ga} gana, indicating harmonious temperaments and matching life rhythms."
-    pair = frozenset([ga, gb])
-    if pair == frozenset(["deva", "manushya"]):
-        return 5.0, "Deva and manushya gana pairing is generally compatible, with minor temperament adjustments needed."
-    if pair == frozenset(["manushya", "rakshasa"]):
-        return 0.0, "Manushya and rakshasa gana combination indicates conflicting temperaments requiring deep mutual respect."
-    # deva + rakshasa
-    return 0.0, "Deva and rakshasa gana are fundamentally mismatched in disposition; strong effort is needed."
+        return score, f"Both partners are {ga} gana, indicating harmonious temperaments and matching life rhythms."
+    pairing = f"A {ga} gana groom and a {gb} gana bride"
+    if score == 6.0:
+        return score, f"{pairing} are fully compatible in temperament."
+    if score == 5.0:
+        return score, f"{pairing} are generally compatible, with minor temperament adjustments needed."
+    if score == 1.0:
+        return score, f"{pairing} are largely mismatched in disposition; strong effort is needed."
+    return score, f"{pairing} are fundamentally mismatched in disposition; strong effort is needed."
 
 
 def _bhakoot(sign_a: str, sign_b: str) -> tuple[float, str]:
@@ -543,9 +647,10 @@ def compute_compat(snap_a: ChartSnapshot, snap_b: ChartSnapshot, today: date) ->
     nak_a  = moon_a.nakshatra
     nak_b  = moon_b.nakshatra
 
-    # 8 kutas in BPHS order
+    # 8 kutas in BPHS order.  snap_a is the groom and snap_b the bride.
     v_sc, v_int   = _varna(sign_a, sign_b)
-    va_sc, va_int = _vasya(sign_a, sign_b)
+    va_sc, va_int = _vasya(vasya_group(sign_a, _degree_in_sign(moon_a)),
+                           vasya_group(sign_b, _degree_in_sign(moon_b)))
     t_sc, t_int   = _tara(nak_a, nak_b)
     y_sc, y_int   = _yoni(nak_a, nak_b)
     gm_sc, gm_int = _graha_maitri(sign_a, sign_b)
