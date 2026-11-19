@@ -237,6 +237,54 @@ Endpoints under `/v1/`:
 | POST | `/special-points` | Arudha, Upapada, Atmakaraka, Karakamsa |
 | GET | `/source` | License, source URL, running commit |
 
+### Muhurat: the event's place and zone
+
+A muhurat is a time for an event, so its sunrise, Rahu Kala, chogadiya and
+rising sign belong to where the event is held, and its clock times to that
+place's zone **on each scanned date** — London is UTC+1 in July and UTC+0 in
+December, so no single fixed offset is right for a July birth chart and a
+December event at once.
+
+`/v1/muhurat`, `/v1/muhurat/lagna-shuddhi` and
+`/v1/muhurat/family-lagna-shuddhi` (and their `/async` forms) take three
+optional fields, given together or not at all (422 otherwise):
+`event_latitude`, `event_longitude` and `event_timezone`, an IANA zone name
+(`Europe/London`, matched without regard to case; the tz database's older alias
+names such as `GB` and `US/Eastern` are accepted; an unknown name, or
+`Factory`, which is the zone of no place, is a 422). They are kept separate from
+the person: the person's own coordinates and `timezone_offset_hours` still place
+the birth moment and the natal Moon.
+
+With them:
+
+- every scanned date is computed at the event's place, on the UTC offset in
+  force on that date (the offset at local noon), from the tz database in the
+  locked `tzdata` package, never the host's own copy. Each zone's full history
+  is read, and its continuing rule is applied past the last transition the data
+  lists, so a date in 1850 or in 2399 is on the clock its zone's rules give it;
+- a date whose local noon the zone skipped or repeated has no offset to choose
+  (`Pacific/Apia` skipped 2011-12-30; in `America/New_York` noon ran twice on
+  1883-11-18). It is a 422 `muhurat_limb_error` naming the limb `utc_offset`,
+  and an `/async` job for it ends in `error` with a message naming that limb;
+- on a clock-change day no wall time is scored that does not exist, that names
+  two different instants, or that lies on the other side of the change from the
+  day's own offset (`bphs_core/event_clock.py`);
+- in the family scan every member is scored at that one place and zone, so one
+  wall time is one absolute instant for the whole group, while each member's
+  natal Moon still comes from their own birth chart.
+
+Without them a request behaves as it always has: the person's coordinates and
+one fixed offset for every date.
+
+On `/v1/muhurat` a day panel runs from its own sunrise to the next sunrise and
+is read wholly on its own date's offset. So the panel of the day **before** a
+clock change shows that night's windows **after** the change on the old offset:
+an hour off the wall clock, and able to name a time that does not exist. For
+London, the 2026-03-28 panel lists a window starting at 01:30 and ends at 05:48
+for a sunrise the wall clock shows as 06:48; the 2026-10-24 panel ends at 07:47
+for a 06:47 sunrise. The panel of the change day itself starts at a sunrise
+after the change and holds no window before it.
+
 ### Errors
 
 Request-validation failures return `422` with `{"detail": [...]}` (the standard
