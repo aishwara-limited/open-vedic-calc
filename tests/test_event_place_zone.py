@@ -11,7 +11,13 @@ These tests pin, through the real routes and the real scan module:
 * an optional event place (``event_latitude`` / ``event_longitude``) and IANA
   zone (``event_timezone``) on every muhurat request, kept separate from the
   natal person, whose own fixed offset still places the birth moment;
-* the UTC offset resolved for EACH scanned date from the tz database;
+* the UTC offset resolved for EACH scanned date from the tz database, with the
+  zone's continuing rule applied after the last transition the database lists
+  (summer and winter time after 2037, in both hemispheres) and its full history
+  before 1902;
+* a day whose local noon the zone skipped or repeated refused as a structured
+  ``muhurat_limb_error`` naming the ``utc_offset`` limb, never a bare 500;
+* the event coordinates held to the globe and to finite values on every route;
 * on a clock-change day, no candidate instant whose local wall time does not
   exist, is ambiguous, or sits on the other side of the change from the day's
   own offset;
@@ -24,6 +30,8 @@ All data below is fictitious.
 """
 from __future__ import annotations
 
+import json
+import time as time_mod
 from datetime import date
 
 import pytest
@@ -359,3 +367,287 @@ def test_half_hour_and_historical_zones_resolve_from_the_tz_database():
     clock = _clock(0.0, "Asia/Colombo")
     assert clock.offset_for(date(2000, 6, 15)) == 6.0
     assert clock.offset_for(date(2026, 6, 15)) == 5.5
+
+
+def test_zone_names_match_without_case_and_take_the_databases_aliases():
+    from bphs_core import event_clock
+    for name in ("Europe/London", "europe/london", "GB", "US/Eastern"):
+        assert event_clock.is_known_zone(name), name
+    assert _clock(0.0, "europe/london").offset_for(date(2026, 7, 1)) == 1.0
+    # Listed by the tz database but the zone of no place ("local time
+    # unknown", offset 0), so it is refused like any other non-zone.
+    for name in ("Factory", "factory", "Mars/Olympus_Mons", "../Europe/London", "Europe"):
+        assert not event_clock.is_known_zone(name), name
+
+
+def test_a_wall_time_repeated_after_noon_is_not_usable():
+    # Egypt ends summer time at 24:00 on the last Thursday of October, so on
+    # 2026-10-29 the hour from 23:00 runs twice - AFTER the noon whose offset
+    # (+3) the day is read on. Its earlier reading carries that same offset, so
+    # only the one-instant check keeps it out.
+    clock = _clock(0.0, "Africa/Cairo")
+    thursday = date(2026, 10, 29)
+    assert clock.offset_for(thursday) == 3.0
+    assert clock.usable(thursday, 22 * 60 + 30)
+    assert not clock.usable(thursday, 23 * 60 + 30)
+
+
+def test_the_hosts_zoneinfo_directory_is_never_read(tmp_path):
+    # A host directory holding a wrong Europe/London (Tokyo's rules) must not
+    # change the answer: zones come from the locked tzdata package only.
+    import zoneinfo
+    from importlib import resources
+
+    from bphs_core import event_clock
+    tokyo = resources.files("tzdata.zoneinfo.Asia").joinpath("Tokyo").read_bytes()
+    (tmp_path / "Europe").mkdir()
+    (tmp_path / "Europe" / "London").write_bytes(tokyo)
+    event_clock._load_zone.cache_clear()
+    zoneinfo.ZoneInfo.clear_cache()
+    zoneinfo.reset_tzpath(to=[str(tmp_path)])
+    try:
+        assert _clock(0.0, "Europe/London").offset_for(date(2026, 7, 1)) == 1.0
+    finally:
+        zoneinfo.reset_tzpath()
+        zoneinfo.ZoneInfo.clear_cache()
+        event_clock._load_zone.cache_clear()
+
+
+def test_zone_clock_refuses_a_name_that_is_no_zone():
+    # Request validation refuses these first; the clock refuses them too,
+    # without echoing the name.
+    from bphs_core import event_clock
+    with pytest.raises(ValueError, match="^not an IANA time zone name$"):
+        event_clock.ZoneClock("Mars/Olympus_Mons")
+
+
+@pytest.mark.parametrize("name", ["Factory", "../Europe/London"])
+def test_a_name_that_is_no_places_zone_is_rejected_by_the_route(name):
+    r = client.post("/v1/muhurat", json={
+        **SUMMER_BORN_LONDON, **LONDON_EVENT, "event_timezone": name,
+        "start_date": "2026-12-15", "end_date": "2026-12-15",
+    })
+    assert r.status_code == 422, r.text
+    assert any(err["loc"][-1] == "event_timezone" for err in r.json()["detail"]), r.text
+
+
+# ---------------------------------------------------------------------------
+# Every date a scan accepts is on its own zone's clock - not only 1902-2037
+# ---------------------------------------------------------------------------
+#
+# A reader that holds only a fixed table of transitions answers with the last
+# entry's offset for every date after it (a northern zone stuck on standard
+# time from 2038, a southern one stuck on summer time) and with the first
+# entry's for every date before it. A scan may be requested for any date from
+# 1800-01-02 to 2399-12-01, so both ends are pinned, in both hemispheres.
+
+SYDNEY = (-33.8688, 151.2093)
+
+SYDNEY_EVENT = {
+    "event_latitude": SYDNEY[0],
+    "event_longitude": SYDNEY[1],
+    "event_timezone": "Australia/Sydney",
+}
+
+
+@pytest.mark.parametrize("zone, day, offset", [
+    # North: summer time in July, standard time in December.
+    ("Europe/London", date(2038, 7, 1), 1.0),
+    ("Europe/London", date(2038, 12, 15), 0.0),
+    ("America/New_York", date(2045, 7, 1), -4.0),
+    ("America/New_York", date(2045, 12, 15), -5.0),
+    # South: the other way round.
+    ("Australia/Sydney", date(2038, 7, 1), 10.0),
+    ("Australia/Sydney", date(2038, 12, 15), 11.0),
+    # The last year a scan may be requested for.
+    ("Europe/London", date(2399, 7, 1), 1.0),
+    ("Australia/Sydney", date(2399, 7, 1), 10.0),
+])
+def test_offsets_after_2037_follow_the_zones_continuing_rule(zone, day, offset):
+    assert _clock(0.0, zone).offset_for(day) == offset
+
+
+@pytest.mark.parametrize("zone, day, offset", [
+    ("Europe/London", date(1890, 6, 15), 0.0),       # GMT since 1847-12-01
+    ("America/New_York", date(1890, 6, 15), -5.0),   # EST since 1883-11-18
+])
+def test_offsets_before_1902_follow_the_zones_history(zone, day, offset):
+    assert _clock(0.0, zone).offset_for(day) == offset
+
+
+@pytest.mark.parametrize("event, day, sunrise_hour, sunset_hour", [
+    (LONDON_EVENT, "2038-07-01", 4, 21),     # BST
+    (LONDON_EVENT, "2038-12-15", 8, 15),     # GMT
+    (SYDNEY_EVENT, "2038-07-01", 7, 16),     # AEST
+    (SYDNEY_EVENT, "2038-12-15", 5, 19),     # AEDT
+])
+def test_day_panels_after_2037_are_on_that_dates_clock(event, day, sunrise_hour, sunset_hour):
+    r = client.post("/v1/muhurat", json={
+        **SUMMER_BORN_LONDON, **event, "start_date": day, "end_date": day,
+    })
+    assert r.status_code == 200, r.text
+    panel = r.json()["days"][0]
+    assert _hour(panel["sunrise"]) == sunrise_hour, panel["sunrise"]
+    assert _hour(panel["sunset"]) == sunset_hour, panel["sunset"]
+
+
+def test_lagna_scan_after_2037_scores_on_northern_summer_time(monkeypatch):
+    calls = _spy_jd(monkeypatch)
+    r = client.post("/v1/muhurat/lagna-shuddhi", json={
+        **SUMMER_BORN_LONDON, **LONDON_EVENT,
+        "start_date": "2038-07-01", "end_date": "2038-07-01", "step_seconds": 3600,
+    })
+    assert r.status_code == 200, r.text
+    assert calls, "the scan scored nothing"
+    assert {off for _, _, off in calls} == {1.0}
+
+
+def test_family_scan_after_2037_scores_on_southern_winter_time(monkeypatch):
+    calls = _spy_jd(monkeypatch)
+    r = client.post("/v1/muhurat/family-lagna-shuddhi", json={
+        "members": [SUMMER_BORN_LONDON, BORN_COLOMBO], **SYDNEY_EVENT,
+        "start_date": "2038-07-01", "end_date": "2038-07-01", "step_seconds": 3600,
+    })
+    assert r.status_code == 200, r.text
+    assert calls, "the scan scored nothing"
+    assert {off for _, _, off in calls} == {10.0}
+
+
+# ---------------------------------------------------------------------------
+# A day whose local noon names no single instant is a structured 422
+# ---------------------------------------------------------------------------
+#
+# The day's offset is the one at local noon. Pacific/Apia skipped the whole of
+# 2011-12-30 (from UTC-10 straight to UTC+14), so that day has no noon; New
+# York left local mean time for EST at 12:03:58 on 1883-11-18, so its noon ran
+# twice. Neither may be guessed, and neither may surface as an opaque 500: this
+# repo's declared mode for a day it cannot compute is MuhurtaLimbError, served
+# as a 422 that names the limb.
+
+APIA = (-13.8333, -171.7667)
+
+APIA_EVENT = {
+    "event_latitude": APIA[0],
+    "event_longitude": APIA[1],
+    "event_timezone": "Pacific/Apia",
+}
+
+_SKIPPED_DAY = "2011-12-30"
+
+_SKIPPED_NOON_REQUESTS = [
+    ("/v1/muhurat", {
+        **SUMMER_BORN_LONDON, **APIA_EVENT,
+        "start_date": _SKIPPED_DAY, "end_date": _SKIPPED_DAY,
+    }),
+    ("/v1/muhurat/lagna-shuddhi", {
+        **SUMMER_BORN_LONDON, **APIA_EVENT,
+        "start_date": _SKIPPED_DAY, "end_date": _SKIPPED_DAY, "step_seconds": 3600,
+    }),
+    ("/v1/muhurat/family-lagna-shuddhi", {
+        "members": [SUMMER_BORN_LONDON, BORN_COLOMBO], **APIA_EVENT,
+        "start_date": _SKIPPED_DAY, "end_date": _SKIPPED_DAY, "step_seconds": 3600,
+    }),
+]
+
+
+def test_zone_clock_refuses_a_noon_the_zone_skipped():
+    from bphs_core.muhurat import MuhurtaLimbError
+    clock = _clock(0.0, "Pacific/Apia")
+    assert clock.offset_for(date(2011, 12, 29)) == -10.0
+    assert clock.offset_for(date(2011, 12, 31)) == 14.0
+    with pytest.raises(MuhurtaLimbError) as exc:
+        clock.offset_for(date(2011, 12, 30))
+    assert exc.value.limb == "utc_offset"
+    assert exc.value.target_date == date(2011, 12, 30)
+
+
+def test_zone_clock_refuses_a_noon_the_zone_repeated():
+    from bphs_core.muhurat import MuhurtaLimbError
+    clock = _clock(0.0, "America/New_York")
+    assert clock.offset_for(date(1883, 11, 19)) == -5.0
+    with pytest.raises(MuhurtaLimbError) as exc:
+        clock.offset_for(date(1883, 11, 18))
+    assert exc.value.limb == "utc_offset"
+    assert exc.value.target_date == date(1883, 11, 18)
+
+
+@pytest.mark.parametrize("path, body", _SKIPPED_NOON_REQUESTS)
+def test_a_skipped_noon_is_a_structured_422_on_every_route(path, body):
+    r = client.post(path, json=body)
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "muhurat_limb_error", detail
+    assert detail["limb"] == "utc_offset", detail
+    assert detail["target_date"] == _SKIPPED_DAY, detail
+
+
+@pytest.mark.parametrize("kind, body", [
+    ("lagna-shuddhi", _SKIPPED_NOON_REQUESTS[1][1]),
+    ("family-lagna-shuddhi", _SKIPPED_NOON_REQUESTS[2][1]),
+])
+def test_a_skipped_noon_ends_an_async_job_naming_the_limb(kind, body):
+    submit = client.post(f"/v1/muhurat/{kind}/async", json=body)
+    assert submit.status_code == 202, submit.text
+    url = f"/v1/muhurat/{kind}/jobs/{submit.json()['job_id']}"
+    deadline = time_mod.time() + 30
+    job = client.get(url).json()
+    while job["status"] not in ("done", "error") and time_mod.time() < deadline:
+        time_mod.sleep(0.05)
+        job = client.get(url).json()
+    assert job["status"] == "error", job
+    assert "'utc_offset'" in job["error"], job
+    assert _SKIPPED_DAY in job["error"], job
+
+
+# ---------------------------------------------------------------------------
+# The event coordinates are held to the globe and to finite values
+# ---------------------------------------------------------------------------
+#
+# The same bounds tests/test_coord_bounds.py pins for the person's coordinates,
+# pinned here for the event's on all three request models. Each rejection must
+# come from request validation naming the field - a 422 from anywhere else (a
+# limb that could not be computed for an impossible place) is not the guard
+# holding - and must say which check refused it: a non-finite value is refused
+# as not finite (`finite_number`), not merely as out of range, which the range
+# alone would also do.
+
+_EVENT_BOUNDS_REQUESTS = [
+    ("/v1/muhurat", {
+        **SUMMER_BORN_LONDON, **LONDON_EVENT,
+        "start_date": "2026-12-15", "end_date": "2026-12-15",
+    }),
+    ("/v1/muhurat/lagna-shuddhi", {
+        **SUMMER_BORN_LONDON, **LONDON_EVENT,
+        "start_date": "2026-12-15", "end_date": "2026-12-15", "step_seconds": 3600,
+    }),
+    ("/v1/muhurat/family-lagna-shuddhi", {
+        "members": [SUMMER_BORN_LONDON, BORN_COLOMBO], **LONDON_EVENT,
+        "start_date": "2026-12-15", "end_date": "2026-12-15", "step_seconds": 3600,
+    }),
+]
+
+_BAD_EVENT_COORDINATES = [
+    (field, literal, check)
+    for field, limit in (("event_latitude", 90), ("event_longitude", 180))
+    for literal, check in (
+        ("NaN", "finite_number"),
+        ("Infinity", "finite_number"),
+        ("-Infinity", "finite_number"),
+        (f"{limit + 0.5}", "less_than_equal"),
+        (f"{-limit - 0.5}", "greater_than_equal"),
+    )
+]
+
+
+@pytest.mark.parametrize("path, body", _EVENT_BOUNDS_REQUESTS)
+@pytest.mark.parametrize("field, literal, check", _BAD_EVENT_COORDINATES)
+def test_event_coordinates_outside_the_globe_or_not_finite_are_rejected(
+    path, body, field, literal, check
+):
+    # A raw body, because NaN and Infinity are not JSON a client's json= sends.
+    raw = json.dumps({**body, field: "__VALUE__"}).replace('"__VALUE__"', literal)
+    r = client.post(path, content=raw.encode(), headers={"Content-Type": "application/json"})
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    assert isinstance(detail, list), detail
+    assert any(err["loc"][-1] == field and err["type"] == check for err in detail), detail
