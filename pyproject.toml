@@ -45,6 +45,12 @@ dependencies = [
     "uvicorn[standard]>=0.29.0",
     "pydantic>=2.6.0",
     "pytz>=2024.1",
+    # The IANA tz database the muhurat event clock reads (bphs_core/event_clock.py).
+    # It is read from THIS package only, never from the host's zoneinfo, so the
+    # image, CI and a developer checkout resolve every zone from one locked copy.
+    # A release moves served clock times wherever a zone's rules changed, which
+    # is what it is for; the bump arrives as its own reviewed change.
+    "tzdata>=2026.6",
     "python-dotenv>=1.0.0",
 ]
 

@@ -36,7 +36,7 @@ The ``< 3.11`` side was a resolve for an interpreter nothing here builds or
 tests, and it was also the side the security updater resolved on — see
 ``test_requires_python_floor_is_the_pinned_interpreter`` below.
 ``requires-python`` now reads exactly ``>=`` the pinned interpreter, and the
-regenerated lock holds 73 entries (72 dependencies and the project itself),
+lock regenerated with it held 73 entries (72 dependencies and the project itself),
 each at one version, with no ``resolution-markers`` at all. It can fork again
 the day a dependency's newest release drops an interpreter ``requires-python``
 still admits, and wherever it forks "the locked set" does not name a single
