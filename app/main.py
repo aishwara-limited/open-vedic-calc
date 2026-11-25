@@ -485,14 +485,12 @@ def strength_endpoint(p: PersonalDataIn):
     planets_with_shadbala = [
         pl for pl in strength_mod.SHADBALA_MINIMUMS if pl in s.rasi_chart
     ]
+    shadbala_by_planet, bhavas = strength_mod.compute_strength(s)
     shadbala = [
-        ShadbalaItem(**vars(strength_mod.compute_shadbala(s, pl)))
+        ShadbalaItem(**vars(shadbala_by_planet[pl]))
         for pl in planets_with_shadbala
     ]
-    bhavabala = [
-        BhavabalaItem(**vars(r))
-        for r in strength_mod.compute_all_bhavabala(s)
-    ]
+    bhavabala = [BhavabalaItem(**vars(r)) for r in bhavas]
     akv = strength_mod.compute_ashtakavarga(s)
 
     vimshopaka = {

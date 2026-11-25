@@ -205,7 +205,7 @@ class TestFamilyMemberBirthYearRange:
 # the question is meaningless). The schema-behaviour tests above run on both.
 
 
-def _moshier_calls_during(request_body: dict) -> tuple[int, int]:
+def _moshier_calls_during(request_body: dict, route: str = "/v1/chart") -> tuple[int, int]:
     """(moshier_calls, total_calls) for every swe.calc_ut a served request makes.
 
     Spies on the module attribute, which is what `bphs_core.utils` and pyjhora
@@ -225,7 +225,7 @@ def _moshier_calls_during(request_body: dict) -> tuple[int, int]:
 
     swe.calc_ut = spy
     try:
-        response = client.post("/v1/chart", json=request_body)
+        response = client.post(route, json=request_body)
     finally:
         swe.calc_ut = real_calc_ut
 
@@ -270,6 +270,81 @@ def test_every_admissible_instant_at_the_bounds_is_swiss_backed(swiss_ephemeris:
         + "\n".join(f"  - {failure}" for failure in failures)
         + "\n\nEither the bound is too wide for the shipped data files, or the "
         "timezone margin is too thin. Re-measure before widening anything."
+    )
+
+
+@pytest.mark.parametrize("route", ["/v1/strength", "/v1/compat"])
+def test_every_admissible_instant_at_the_bounds_is_swiss_backed_on_the_strength_routes(
+    swiss_ephemeris: int, route: str
+) -> None:
+    """The strength limb reads past the instant it names, and still answers on Swiss data.
+
+    ``/v1/strength``, and the Bhavabala note of ``/v1/compat``, read the
+    sunrises and the sunset around the birth (``bphs_core/strength.py``): from
+    two days before it to the first sunrise after it. At the last admissible
+    instant, 2400-01-09 23:59:59 at tz -12 (2400-01-10 11:59:59 UT), that
+    sunrise lies past the shipped files, so that one search answers from the
+    fallback, and swisseph KEEPS the fallback (``utils.restore_ephemeris_state``).
+    Before each search re-applied the ephemeris state, /v1/strength answered
+    that request 200 with 40 of its 55 ``swe.calc_ut`` calls on Moshier, all at
+    a Julian Day the files cover (the five war latitudes, eight times), and
+    /v1/compat 5 of 40.
+    """
+    failures: list[str] = []
+    for bound in (MIN_EPHEMERIS_DATE, MAX_EPHEMERIS_DATE):
+        for birth_time, offset in _INSTANT_CORNERS:
+            person = {
+                **SAMPLE_A,
+                "birth_date": bound.isoformat(),
+                "birth_time": birth_time,
+                "timezone_offset_hours": offset,
+            }
+            body = person if route == "/v1/strength" else {
+                "person_a": person, "person_b": SAMPLE_B,
+            }
+            moshier, total = _moshier_calls_during(body, route)
+            if moshier:
+                failures.append(
+                    f"{bound.isoformat()} {birth_time} tz={offset:+g}: "
+                    f"{moshier}/{total} swe.calc_ut calls answered on MOSHIER"
+                )
+
+    assert not failures, (
+        f"an admissible {route} request was computed on the Moshier fallback:\n"
+        + "\n".join(f"  - {failure}" for failure in failures)
+        + "\n\nA search outside the birth instant left swisseph on its fallback."
+    )
+
+
+def test_the_strength_day_frame_leaves_the_thread_on_swiss_data(swiss_ephemeris: int) -> None:
+    """After the strength inputs of the last admissible instant, the next
+    lookup on the same thread still reads the files.
+
+    The search for the sunrise after a birth at 2400-01-10 11:59:59 UT reads
+    past the shipped data. Without the state re-applied, the thread stayed on
+    the fallback: the next chart computed on it, for 2400-01-07, took 12 of its
+    15 reads from Moshier.
+    """
+    from bphs_core import strength
+    from bphs_core.chart import Chart, PersonalData
+
+    snapshot = Chart(PersonalData(
+        "corner", datetime.datetime(2400, 1, 9), datetime.time(23, 59, 59),
+        "Sample City", 7.0, 80.0, -12.0,
+    )).snapshot()
+    try:
+        strength.strength_inputs(snapshot)
+        swiss_active, retflag = utils.probe_ephemeris_source(
+            swe.julday(2400, 1, 7, 12.0), swe.MOON
+        )
+    finally:
+        # Hygiene for the tests after this one when the property does NOT hold;
+        # the probe above has already been read.
+        utils.restore_ephemeris_state()
+    assert swiss_active, (
+        f"after strength_inputs, a Moon lookup at 2400-01-07 answered from "
+        f"MOSHIER (retflag {retflag}): the day-frame search left the thread on "
+        "the fallback"
     )
 
 

@@ -1,7 +1,10 @@
 """Shadbala, Bhavabala and Ashtakavarga.
 
 Shadbala and Bhavabala follow Brihat Parashara Hora Shastra (BPHS) chapter 27
-in R. Santhanam's translation, wherever BPHS gives a rule or a number. Where
+in R. Santhanam's translation, wherever BPHS gives a rule or a number, except
+BPHS 27.30-31 (a rupa added or taken for the grahas occupying a bhava, and 15
+virupas by the rising type of its sign), which is not applied: Bhavabala is
+the three components of BPHS 27.26-29 (see bhavabala_table). Where
 BPHS is silent, the method is the Surya Siddhanta's (Burgess translation): the
 ahargana that fixes the year and month lords, the mean longitudes and
 sighroccas the cheshta kendra needs, and the rule that decides a planetary
@@ -498,7 +501,13 @@ def _tribhaga_bala(planet: str, inp: StrengthInputs) -> float:
 
 def ahargana(inp: StrengthInputs) -> int:
     """Days since creation for the Hindu day of birth (Surya Siddhanta
-    1.21-24, counted as in Santhanam's note to BPHS 27.13)."""
+    1.21-24, counted as in Santhanam's note to BPHS 27.13).
+
+    The count is anchored to the note's figure for 1 January 1860, and the
+    day of birth takes its own number: a day whose count is a multiple of 360
+    (or of 30) already takes the next year's (or month's) lord in year_lord
+    and month_lord. Read as the days elapsed before the day of birth, every
+    such boundary would fall one day later."""
     return _AHARGANA_AT_KALI_DAY_ONE + (inp.hindu_day_jdn - _KALI_DAY_ONE_JDN)
 
 
@@ -813,9 +822,12 @@ def bhavabala_table(inp: StrengthInputs,
 # From a chart to the inputs
 # ---------------------------------------------------------------------------
 
-def _next_solar_event(jd_ut: float, rsmi: int, geopos: tuple[float, float, float]) -> float:
-    """The first sunrise or sunset after *jd_ut* on the declared rise/set
-    convention (utils.RISE_FLAGS / SET_FLAGS)."""
+# A search for a sunrise or sunset is refined from this many days before the
+# event it found (see _next_solar_event).
+_NEAR_SEARCH_DAYS = 0.25
+
+
+def _rise_trans(jd_ut: float, rsmi: int, geopos: tuple[float, float, float]) -> float:
     res, tret = swe.rise_trans(jd_ut, swe.SUN, rsmi, geopos, 0.0, 0.0,
                                utils.POSITION_FLAGS)
     if res != 0:
@@ -825,6 +837,34 @@ def _next_solar_event(jd_ut: float, rsmi: int, geopos: tuple[float, float, float
             "tribhaga, hora and vara bala (BPHS 27.12-13) are undefined"
         )
     return tret[0]
+
+
+def _next_solar_event(jd_ut: float, rsmi: int, geopos: tuple[float, float, float]) -> float:
+    """The first sunrise or sunset after *jd_ut* on the declared rise/set
+    convention (utils.RISE_FLAGS / SET_FLAGS: the centre of the disc on the
+    horizon, refraction ignored).
+
+    Searched twice when the event lies far from the start. swe.rise_trans
+    started about a day before an event returns it up to about four minutes
+    off at high latitudes (measured: the sunrise of 1947-12-22 at 59.4 S
+    226 s late, of 2019-06-20 at 51.5 N 14 s late), and within 0.1 s when
+    started a quarter of a day or less before it. So an event found more than
+    a quarter of a day after the start is searched for again from a quarter
+    of a day before it.
+
+    A search can read past the shipped data files: from the last admissible
+    birth instant, the sunrise after the birth lies past them. swisseph then
+    keeps its fallback for every later lookup, even at Julian Days the files
+    cover, so the ephemeris state is re-applied when the search ends, however
+    it ends (utils.restore_ephemeris_state).
+    """
+    try:
+        event = _rise_trans(jd_ut, rsmi, geopos)
+        if event - jd_ut > _NEAR_SEARCH_DAYS:
+            event = _rise_trans(event - _NEAR_SEARCH_DAYS, rsmi, geopos)
+        return event
+    finally:
+        utils.restore_ephemeris_state()
 
 
 @utils.serialized_ephemeris
@@ -901,6 +941,18 @@ def compute_all_bhavabala(snapshot: ChartSnapshot) -> list[BhavabalaResult]:
     """The served Bhavabala of the twelve houses."""
     inp = strength_inputs(snapshot)
     return bhavabala_table(inp, shadbala_virupas(inp))
+
+
+def compute_strength(
+    snapshot: ChartSnapshot,
+) -> tuple[dict[str, ShadbalaResult], list[BhavabalaResult]]:
+    """The served Shadbala of the seven grahas and Bhavabala of the twelve
+    houses, from one reading of the inputs (the sunrise and sunset searches
+    and the war latitudes are read once, not once per graha)."""
+    inp = strength_inputs(snapshot)
+    virupas = shadbala_virupas(inp)
+    shadbala = {p: _result(p, v) for p, v in virupas.items()}
+    return shadbala, bhavabala_table(inp, virupas)
 
 
 # Bhinnashtakavarga benefic places per BPHS chapter 66 (Parashara).
