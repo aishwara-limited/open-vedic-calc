@@ -137,3 +137,47 @@ def test_polar_day_has_no_classical_shadbala():
     r = client.post("/v1/strength", json=_person("2000-06-21", "12:00:00", 78.2, 15.6, 2.0))
     assert r.status_code == 422, r.text
     assert r.json()["detail"]["code"] == "strength_undefined"
+
+
+def test_strength_route_reads_its_inputs_once(monkeypatch):
+    """One /v1/strength request reads the strength inputs (the sunrise and
+    sunset searches, the war latitudes) once for all seven grahas and twelve
+    houses, and serves exactly what the per-graha and per-house functions
+    compute from the same chart."""
+    import datetime as dt
+
+    from bphs_core import strength
+    from bphs_core.chart import Chart, PersonalData
+
+    calls = []
+    real = strength.strength_inputs
+
+    def counting(snapshot):
+        calls.append(snapshot)
+        return real(snapshot)
+
+    monkeypatch.setattr(strength, "strength_inputs", counting)
+    date, time, lat, lon, tz = _BIRTHS[2]
+    r = client.post("/v1/strength", json=_person(date, time, lat, lon, tz))
+    assert r.status_code == 200, r.text
+    assert len(calls) == 1
+    monkeypatch.undo()
+
+    snap = Chart(PersonalData("synthetic", dt.datetime.fromisoformat(date),
+                              dt.time.fromisoformat(time), "Synthetic", lat, lon, tz)).snapshot()
+    body = r.json()
+    assert body["shadbala"] == [
+        vars(strength.compute_shadbala(snap, planet)) for planet in strength.SHADBALA_PLANETS
+    ]
+    assert body["bhavabala"] == [vars(h) for h in strength.compute_all_bhavabala(snap)]
+
+
+def test_compat_with_a_polar_day_birth_has_no_bhavabala_note():
+    """/v1/compat builds its Bhavabala note on each partner's Shadbala, so a
+    pair with a polar-day birth gets the same structured 422."""
+    r = client.post("/v1/compat", json={
+        "person_a": _person("2000-06-21", "12:00:00", 78.2, 15.6, 2.0),
+        "person_b": _person(*_BIRTHS[1]),
+    })
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["code"] == "strength_undefined"

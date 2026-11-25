@@ -18,8 +18,9 @@ still passed, 741 tests, zero failures. The shadow grahas were already pinned in
 every varga by tests/test_shadow_graha_retrogression.py, but
 ``utils.graha_is_retrograde`` returns True for Rahu and Ketu whatever
 ``computed`` says, so those assertions are blind to exactly that mutation. A
-wrong vakri flag in a divisional chart moves cheshta bala, the dignity reading
-and the karaka interpretation, and it was invisible.
+wrong vakri flag in a divisional chart moves the dignity reading and the karaka
+interpretation, and it was invisible. (It no longer moves cheshta bala, which
+comes from the cheshta kendra, BPHS 27.24-25, and reads no flag.)
 
 WHAT WAS MEASURED ABOUT THE MECHANISM: the gap is PROPAGATION, not an
 independent per-varga computation. ``chart.py`` calls

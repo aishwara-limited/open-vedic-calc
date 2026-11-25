@@ -266,6 +266,21 @@ def test_bhava_dig_reference_every_sign(sign_idx, second_half):
     assert st.bhava_dig_reference(madhya, inp) % 360 == pytest.approx(points[table[sign_idx]])
 
 
+@pytest.mark.parametrize("degree,dhanus,makara", [
+    (14.99, "desc", "ic"),
+    (15.0, "ic", "mc"),
+])
+def test_bhava_dig_reference_half_sign_cut(degree, dhanus, makara):
+    """BPHS 27.26-28 cut Dhanus and Makara at their middle, 15 degrees: the
+    first half of Dhanus takes the 7th, its second half the 4th; the first
+    half of Makara the 4th, its second half the 10th. 15.0 itself opens the
+    second half."""
+    inp = _inputs({}, ascendant=7.0, midheaven=280.0)
+    points = {"asc": 7.0, "desc": 187.0, "mc": 280.0, "ic": 100.0}
+    assert st.bhava_dig_reference(240.0 + degree, inp) % 360 == pytest.approx(points[dhanus])
+    assert st.bhava_dig_reference(270.0 + degree, inp) % 360 == pytest.approx(points[makara])
+
+
 # ---------------------------------------------------------------------------
 # Kaala bala: nathonnata, tribhaga, the four lords, paksha.
 # ---------------------------------------------------------------------------
@@ -773,3 +788,167 @@ def test_ascendant_and_meridian_in_the_served_frame(birth):
     _, ascmc = utils.sidereal_houses(snap.jd, birth[2], birth[3], b"P")
     assert inp.ascendant == ascmc[0] and inp.midheaven == ascmc[1]
     assert SIGNS[int(inp.ascendant // 30)] == snap.lagna
+
+
+# ---------------------------------------------------------------------------
+# Real births through strength_inputs: what the chart hands the computation.
+# Each expectation is worked from the rule and the date, not read back from
+# the module. Positions are the Swiss ephemeris's, to tolerances the Moshier
+# runtime also meets.
+# ---------------------------------------------------------------------------
+
+def _bphs_varga_sign(varga, longitude):
+    """The sign of a sidereal *longitude* in one varga, by BPHS chapter 6."""
+    s = int(longitude // 30.0) % 12
+    d = longitude % 30.0
+    odd = s % 2 == 0  # Aries, index 0, is the first (odd) sign
+    if varga == "D2":   # 6.5-6: odd signs Leo then Cancer, even signs reversed
+        return "Leo" if (d < 15.0) == odd else "Cancer"
+    if varga == "D3":   # 6.7-8: the sign, its 5th, its 9th
+        return SIGNS[(s + 4 * int(d // 10.0)) % 12]
+    if varga == "D7":   # 6.10: odd signs from the sign, even from its 7th
+        return SIGNS[(s + (0 if odd else 6) + int(d * 7 // 30.0)) % 12]
+    if varga == "D9":   # 6.12: movable from the sign, fixed from its 9th, dual from its 5th
+        return SIGNS[(s + (0, 8, 4)[s % 3] + int(d * 9 // 30.0)) % 12]
+    if varga == "D12":  # 6.15: from the sign
+        return SIGNS[(s + int(d // 2.5)) % 12]
+    if varga == "D30":  # 6.27: odd Mars 5, Saturn 5, Jupiter 8, Mercury 7, Venus 5; even reversed
+        bands = ([(5, "Aries"), (10, "Aquarius"), (18, "Sagittarius"), (25, "Gemini"),
+                  (30, "Libra")] if odd else
+                 [(5, "Taurus"), (12, "Virgo"), (20, "Pisces"), (25, "Capricorn"),
+                  (30, "Scorpio")])
+        return next(sign for end, sign in bands if d < end)
+    raise AssertionError(varga)
+
+
+@pytest.mark.parametrize("birth", [
+    ("1962-02-04", "23:40:00", 28.6, 77.2, 5.5),
+    ("1991-03-11", "18:05:00", -33.9, 151.2, 11.0),
+    ("2019-06-20", "15:30:00", 51.5, -0.1, 1.0),
+])
+def test_saptavarga_signs_are_bphs_chapter_6_of_the_longitude(birth):
+    """Saptavargaja bala (BPHS 27.2-4) reads each graha's sign in the hora,
+    drekkana, saptamsa, navamsa, dwadasamsa and trimsamsa. Every one is
+    worked here from the graha's sidereal longitude by BPHS chapter 6, so a
+    varga read from the wrong divisional chart fails."""
+    inp = st.strength_inputs(_real_snapshot(*birth))
+    assert set(inp.varga_signs) == set(st.SAPTAVARGA[1:])
+    for varga in st.SAPTAVARGA[1:]:
+        for graha in GRAHAS:
+            want = _bphs_varga_sign(varga, inp.longitudes[graha])
+            assert inp.varga_signs[varga][graha] == want, (varga, graha)
+
+
+@pytest.mark.parametrize("birth,jdn,lord", [
+    # 04:00 IST on Monday 3 January 2000, before the 07:18 IST sunrise: the
+    # Hindu day is still Sunday 2 January, JDN 2451546.
+    (("2000-01-03", "04:00:00", 28.6, 77.2, 5.5), 2451546, "Sun"),
+    # 10:00 JST on Monday 3 January 2000. The sunrise that opened the day fell
+    # at 21:56 UT on Sunday 2 January; its local date (UTC+9) is Monday,
+    # JDN 2451547.
+    (("2000-01-03", "10:00:00", 35.7, 139.7, 9.0), 2451547, "Moon"),
+])
+def test_hindu_day_is_the_local_date_of_the_opening_sunrise(birth, jdn, lord):
+    """The day lord is the lord of the day opened by the sunrise at or before
+    the birth (BPHS 27.13), on the local calendar of the birth place."""
+    inp = st.strength_inputs(_real_snapshot(*birth))
+    assert inp.hindu_day_jdn == jdn
+    assert st.weekday_lord(inp) == lord
+
+
+@pytest.mark.parametrize("birth,arcs,latitudes,wars", [
+    # The great conjunction in Capricorn. Mercury and Venus are 0.26 deg
+    # apart; Mercury at +3.50 is north of Venus at -1.30 and wins. Three
+    # further pairs lie within five degrees but past one: no war.
+    (("1962-02-04", "23:40:00", 28.6, 77.2, 5.5),
+     {("Mercury", "Venus"): 0.256, ("Mars", "Saturn"): 1.603,
+      ("Mercury", "Jupiter"): 1.345, ("Jupiter", "Venus"): 1.090},
+     {"Mars": -0.995, "Mercury": 3.502, "Jupiter": -0.689, "Venus": -1.296,
+      "Saturn": -0.367},
+     [("Mercury", "Venus")]),
+    # Jupiter and Saturn 0.003 deg apart; Saturn at -0.379 is north of
+    # Jupiter at -0.480.
+    (("2020-12-21", "23:00:00", 28.6, 77.2, 5.5),
+     {("Jupiter", "Saturn"): 0.003},
+     {"Jupiter": -0.480, "Saturn": -0.379},
+     [("Saturn", "Jupiter")]),
+    # Mars and Saturn 0.035 deg apart; Saturn at -0.954 is north of Mars at
+    # -1.259.
+    (("2022-04-05", "06:00:00", 28.6, 77.2, 5.5),
+     {("Mars", "Saturn"): 0.035},
+     {"Mars": -1.259, "Saturn": -0.954},
+     [("Saturn", "Mars")]),
+    # Three weeks before their conjunction Jupiter and Saturn are 2.12 deg
+    # apart: no war.
+    (("2020-12-02", "12:00:00", 28.6, 77.2, 5.5),
+     {("Jupiter", "Saturn"): 2.124},
+     {"Jupiter": -0.465, "Saturn": -0.362},
+     []),
+])
+def test_real_planetary_wars(birth, arcs, latitudes, wars):
+    """Surya Siddhanta 7.18-21 on real skies: two star grahas less than one
+    degree apart in longitude are at war, and the one with the more northern
+    geocentric ecliptic latitude is the victor. BPHS 27.20 then moves the
+    difference of their Shadbala from the vanquished to the victor."""
+    inp = st.strength_inputs(_real_snapshot(*birth))
+    for (a, b), arc in arcs.items():
+        assert st._arc(inp.longitudes[a], inp.longitudes[b]) == pytest.approx(arc, abs=0.01)
+    for graha, latitude in latitudes.items():
+        assert inp.latitudes[graha] == pytest.approx(latitude, abs=0.01), graha
+    assert st.yuddha_pairs(inp) == wars
+    table = st.shadbala_virupas(inp)
+    for victor, vanquished in wars:
+        assert table[victor].yuddha > 0.0 > table[vanquished].yuddha
+        assert table[victor].yuddha == pytest.approx(-table[vanquished].yuddha)
+
+
+def test_hora_counts_24_equal_parts_on_a_long_day():
+    """BPHS 27.13 and its note: 24 equal horas from sunrise to the next
+    sunrise. London, Thursday 20 June 2019, 15:30 BST (14:30 UT): sunrise
+    03:50 UT and the next one 03:50 UT, so each hora is an hour and the birth,
+    10 h 40 min after sunrise, falls in the 11th (k = 10). Thursday's horas
+    run Jupiter, Mars, Sun, Venus, Mercury, Moon, Saturn and round again, so
+    the 11th is Venus's. Twelve horas of daylight (sunset 20:14 UT, 82
+    minutes each) would put it in the 8th, Jupiter's."""
+    inp = st.strength_inputs(_real_snapshot("2019-06-20", "15:30:00", 51.5, -0.1, 1.0))
+    assert st.weekday_lord(inp) == "Jupiter"
+    assert st.hora_lord(inp) == "Venus"
+
+
+def test_ayana_reads_the_sayana_longitude_of_a_real_birth():
+    """BPHS 27.15-17 measure ayana bala on the sayana longitude. Delhi,
+    5 April 2022, 06:00 IST: the sayana Sun is at 15.22 deg (Aries, north of
+    the equator). Bhuja 15.22, kranti 45 x 15.22 / 30 = 22.83, and the Sun
+    adds it: (90 + 22.83) / 3 = 37.61 virupas, which is also his cheshta bala
+    (BPHS 27.18). Read on the sidereal longitude instead, 351.05 deg, he
+    would be south of it, at 25.5."""
+    inp = st.strength_inputs(_real_snapshot("2022-04-05", "06:00:00", 28.6, 77.2, 5.5))
+    assert (inp.longitudes["Sun"] + inp.ayanamsa) % 360.0 == pytest.approx(15.22, abs=0.02)
+    assert st._ayana_bala("Sun", inp) == pytest.approx(37.61, abs=0.02)
+    assert st._cheshta_bala("Sun", inp) == pytest.approx(37.61, abs=0.02)
+
+
+@pytest.mark.parametrize("birth", [
+    ("1947-12-22", "12:00:00", -59.4, 0.0, 0.0),   # midsummer at 59.4 S
+    ("2019-06-20", "15:30:00", 51.5, -0.1, 1.0),   # midsummer at 51.5 N
+    ("2019-03-20", "15:30:00", 51.5, -0.1, 0.0),   # equinox: sunrise 2 min earlier each day
+    ("1962-02-04", "23:40:00", 28.6, 77.2, 5.5),   # a night birth
+])
+def test_day_frame_puts_the_suns_centre_on_the_horizon(birth):
+    """The Hindu sunrise and sunset (utils.RISE_FLAGS / SET_FLAGS) are the
+    instants the centre of the Sun's disc stands on the horizon, refraction
+    ignored. Checked by the Sun's own altitude at each of the three events,
+    so neither the search nor the day count can hide a wrong time:
+    swe.rise_trans started a day before the event returned the sunrise at
+    59.4 S 226 s late (0.30 deg of altitude) and at 51.5 N 14 s late
+    (0.03 deg), and a next sunrise taken as one day after this one would be
+    2 min late at the equinox (0.36 deg)."""
+    import swisseph as swe
+    inp = st.strength_inputs(_real_snapshot(*birth))
+    geopos = (birth[3], birth[2], 0.0)
+    for name in ("sunrise_jd", "sunset_jd", "next_sunrise_jd"):
+        jd = getattr(inp, name)
+        lon, _, distance = swe.calc_ut(jd, swe.SUN, swe.FLG_SWIEPH)[0][:3]
+        altitude = swe.azalt(jd, swe.ECL2HOR, geopos, 0.0, 0.0, (lon, 0.0, distance))[1]
+        assert abs(altitude) < 0.001, (name, altitude)
+    assert inp.sunrise_jd <= inp.birth_jd < inp.next_sunrise_jd

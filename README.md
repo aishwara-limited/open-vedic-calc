@@ -328,7 +328,10 @@ by Brihat Parashara Hora Shastra chapter 27 in R. Santhanam's translation
 wherever BPHS gives a rule or a number, and by the Surya Siddhanta (Burgess)
 where BPHS is silent: the ahargana behind the year and month lords, the mean
 longitudes and sighroccas of the cheshta kendra, and the victor of a planetary
-war. Each verse is cited beside the code that applies it. All six components
+war. Each verse is cited beside the code that applies it. One rule of the
+chapter is not applied: BPHS 27.30-31, which adds or takes a rupa for the
+grahas occupying a bhava and gives 15 virupas by the rising type of its sign.
+Bhavabala is served as the three components named below. All six components
 are served in rupas (virupas / 60); every sub-bala but drik and yuddha is held
 inside its classical range by reducing each arc past six signs before dividing
 by three. `minimum_bala` is the required Shadbala of BPHS 27.32-33.

@@ -759,10 +759,13 @@ class TestStrengthEdges:
             strength._next_solar_event(2451545.0, 897, (15.6, 78.2, 0.0))
 
     def test_compute_shadbala_raises_for_missing_planet(self):
-        """compute_shadbala: raises ValueError when the planet is not in rasi_chart."""
+        """compute_shadbala: raises ValueError when the planet is not in rasi_chart.
+
+        The message is matched whole: strength_inputs refuses the same chart
+        with a different ValueError that also names the Sun."""
         from bphs_core.strength import compute_shadbala
         snap = _snapshot({})
-        with pytest.raises(ValueError, match="Sun"):
+        with pytest.raises(ValueError, match=r"^Planet Sun not found in chart$"):
             compute_shadbala(snap, "Sun")
 
     def test_ashtakavarga_ref_none_is_skipped(self):
