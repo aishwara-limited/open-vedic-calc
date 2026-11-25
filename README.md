@@ -290,21 +290,28 @@ after the change and holds no window before it.
 
 Ashtakoota is scored for an **ordered** pair: `person_a` is the **groom** (boy)
 and `person_b` is the **bride** (girl). Varna, Vasya and Gana give a different
-score when the two are swapped, so a caller must send the pair in that order;
+score when the two are swapped, and so does Yoni for two animal pairs (horse
+with deer, buffalo with lion), so a caller must send the pair in that order;
 the request shape is unchanged and the field descriptions in `app/schemas.py`
 say the same.
 
 BPHS does not define the koota tables. The scheme and its 36 points follow the
 marriage chapter (Vivaha-prakarana) of Muhurta Chintamani. The Vasya, Yoni and
-Gana point tables are the North Indian tables published by saravali.de, as
-transcribed in PyJHora 4.8.7 (`VasiyaArray`, `YoniArray`, `gana_array`), bride
-on the rows and groom on the columns; they are typed into
-`bphs_core/compat.py` rather than read from the library. Published tables
+Gana point tables are the ones saravali.de publishes (the address redirects to
+saravali.github.io: `astrology/koota_vashya.html`, `koota_yoni.html` and
+`koota_gana.html`), bride on the rows and groom on the columns as the pages
+label them; the Vasya table is also the `vashya_map` of Maitreya 8, the program
+that site documents. They are typed into `bphs_core/compat.py` from those
+publications, never read from a library. PyJHora 4.8.7 carries arrays labelled
+as that site's, but its Vasya array differs from the page in 14 of the 25
+cells and its Yoni array in two (a horse bride with a deer groom, a lion bride
+with a buffalo groom); where they differ, the page is served. Published tables
 differ cell by cell, so a score that differs from another calculator's by a
 point or two in one of these kootas is a table choice, not an error. The vasya
 group follows the Moon's sign and, in Sagittarius (0-15 deg nara, 15-30 deg
 chatushpada) and Capricorn (0-15 deg chatushpada, 15-30 deg jalachara), the
-half of the sign it occupies. Classical nadi-dosha cancellations are not
+half of the sign it occupies: the site's page gives the Capricorn split, and
+Maitreya 8's `getVashya` gives both. Classical nadi-dosha cancellations are not
 applied. `tests/test_ashtakoota_classical_tables.py` pins every table cell and
 every nakshatra pada by hand.
 
