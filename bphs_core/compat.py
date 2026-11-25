@@ -376,10 +376,10 @@ def _graha_maitri(sign_a: str, sign_b: str) -> tuple[float, str]:
 
 
 # Gana koota points (saravali.de, astrology/koota_gana.html; PyJHora 4.8.7's
-# ``gana_array`` is the same).  Rows are the bride's gana and columns the groom's, both in _GANA_ORDER.  The
-# table is directional: a deva groom with a manushya bride scores 5 but a
-# manushya groom with a deva bride 6, and a deva groom with a rakshasa bride
-# scores 1 but a rakshasa groom with a deva bride 0.
+# ``gana_array`` is the same).  Rows are the bride's gana and columns the
+# groom's, both in _GANA_ORDER.  The table is directional: a deva groom with a
+# manushya bride scores 5 but a manushya groom with a deva bride 6, and a deva
+# groom with a rakshasa bride scores 1 but a rakshasa groom with a deva bride 0.
 _GANA_ORDER: tuple[str, ...] = ("deva", "manushya", "rakshasa")
 _GANA_POINTS: tuple[tuple[int, ...], ...] = (
     # groom: deva manushya rakshasa
