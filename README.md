@@ -235,6 +235,7 @@ Endpoints under `/v1/`:
 | POST | `/yogas` | All 284 yogas incl. Viparita Raja |
 | POST | `/transits` | Saturn/Jupiter gochara, Sade Sati, Vedha |
 | POST | `/special-points` | Arudha, Upapada, Atmakaraka, Karakamsa |
+| POST | `/compat` | Ashtakoota (36 points), Mangal dosha, dasha overlaps |
 | GET | `/source` | License, source URL, running commit |
 
 ### Muhurat: the event's place and zone
@@ -284,6 +285,28 @@ London, the 2026-03-28 panel lists a window starting at 01:30 and ends at 05:48
 for a sunrise the wall clock shows as 06:48; the 2026-10-24 panel ends at 07:47
 for a 06:47 sunrise. The panel of the change day itself starts at a sunrise
 after the change and holds no window before it.
+
+### Compatibility (`/v1/compat`)
+
+Ashtakoota is scored for an **ordered** pair: `person_a` is the **groom** (boy)
+and `person_b` is the **bride** (girl). Varna, Vasya and Gana give a different
+score when the two are swapped, so a caller must send the pair in that order;
+the request shape is unchanged and the field descriptions in `app/schemas.py`
+say the same.
+
+BPHS does not define the koota tables. The scheme and its 36 points follow the
+marriage chapter (Vivaha-prakarana) of Muhurta Chintamani. The Vasya, Yoni and
+Gana point tables are the North Indian tables published by saravali.de, as
+transcribed in PyJHora 4.8.7 (`VasiyaArray`, `YoniArray`, `gana_array`), bride
+on the rows and groom on the columns; they are typed into
+`bphs_core/compat.py` rather than read from the library. Published tables
+differ cell by cell, so a score that differs from another calculator's by a
+point or two in one of these kootas is a table choice, not an error. The vasya
+group follows the Moon's sign and, in Sagittarius (0-15 deg nara, 15-30 deg
+chatushpada) and Capricorn (0-15 deg chatushpada, 15-30 deg jalachara), the
+half of the sign it occupies. Classical nadi-dosha cancellations are not
+applied. `tests/test_ashtakoota_classical_tables.py` pins every table cell and
+every nakshatra pada by hand.
 
 ### Errors
 
