@@ -931,8 +931,9 @@ class FamilyLagnaShuddhiJobStatus(BaseModel):
 
 _COMPAT_ORDER = (
     "Ashtakoota is scored for an ORDERED pair: person_a is the GROOM (boy) and "
-    "person_b is the BRIDE (girl). Varna, Vasya and Gana koota score "
-    "differently when the two are swapped, so send them in this order."
+    "person_b is the BRIDE (girl). Varna, Vasya, Gana and Yoni koota score "
+    "differently when the two are swapped (Yoni for two animal pairs), so send "
+    "them in this order."
 )
 
 

@@ -20,18 +20,34 @@ that drifts from the classical one reds here instead of agreeing with itself.
   inauspicious.  The remainder 1 (Janma: the same star, the 10th, the 19th) is
   not.  Each auspicious direction is worth 1.5 points, so 3 is the maximum.
 
-The Vasya, Yoni and Gana POINT tables are the North Indian tables published by
-saravali.de, as transcribed in PyJHora 4.8.7
-(``jhora/horoscope/match/compatibility.py``: ``VasiyaArray``, ``YoniArray``,
-``gana_array``), each with the BRIDE's group on the rows and the GROOM's on the
-columns.  They are typed in below cell by cell; a separate test checks the
-hand-typed copy against that transcription, so a typing slip here is caught by
-something other than the engine.  The vasya group follows the Moon's sign and,
-for Sagittarius (0-15 nara, 15-30 chatushpada) and Capricorn (0-15
-chatushpada, 15-30 jalachara), the half of the sign it occupies; every one of
-the 108 nakshatra padas is pinned to its group by hand.  The yoni animal of
-each nakshatra is that table's; the genders, which the table does not carry,
-are the common North Indian list of the same family.
+The Vasya, Yoni and Gana POINT tables are the tables saravali.de publishes.
+That address redirects to saravali.github.io, and the tables are on the pages
+astrology/koota_vashya.html, astrology/koota_yoni.html and
+astrology/koota_gana.html (each "Last modification of this page 2017-10-30").
+Each page labels its rows "Bride", so the BRIDE's group is on the rows and the
+GROOM's on the columns.  The tables are typed in below cell by cell from those
+pages.  The Vasya table is typed a second time, groom first, from the source of
+the program that site documents (Maitreya 8, ``src/jyotish/Partner.cpp``,
+``vashya_map``, indexed groom then bride), and a test checks the two typings
+against each other, so a typing slip here is caught by something other than
+the engine.
+
+The vasya group follows the Moon's sign and, for Sagittarius (0-15 nara, 15-30
+chatushpada) and Capricorn (0-15 chatushpada, 15-30 jalachara), the half of
+the sign it occupies.  The site's page lists the Capricorn split only (it does
+not name Sagittarius); both splits, at 15 degrees, are those of Maitreya 8's
+``getVashya`` (``src/jyotish/astrobase.cpp``).  Every one of the 108 nakshatra
+padas is pinned to its group by hand.  The yoni animal and the gender of each
+nakshatra are the site's: its yoni page lists one male and one female star per
+animal, and the mongoose's female star there is Abhijit, which is not one of
+the 27 nakshatras used here.
+
+PyJHora 4.8.7 carries arrays labelled as this site's (``VasiyaArray``,
+``YoniArray`` and ``gana_array`` in ``jhora/horoscope/match/compatibility.py``).
+Where they differ from the pages they are NOT what is served: the library's
+Vasya array differs from the page in 14 of the 25 cells, and its Yoni array in
+two (a horse bride with a deer groom, a lion bride with a buffalo groom).  A
+test states exactly where the hand-typed tables and the library's arrays agree.
 
 Direction: ``/v1/compat`` reads ``person_a`` as the groom and ``person_b`` as
 the bride, and so do the scoring functions (first argument groom).
@@ -41,6 +57,7 @@ whose Moon sits near the MIDDLE of the named nakshatra (at least 5 degrees from
 either edge under both ephemeris runtimes), so the nakshatra itself is not in
 doubt and the test measures only the table.  No personal birth data is used.
 """
+import datetime
 import os
 
 import pytest
@@ -50,8 +67,8 @@ os.environ.setdefault("CALC_SERVICE_TOKEN", "test")
 os.environ.setdefault("PUBLIC_SOURCE_URL", "https://example.com")
 
 from app.main import app
-from bphs_core import compat, utils
-from bphs_core.chart import PlanetData
+from bphs_core import compat, profile, utils
+from bphs_core.chart import ChartSnapshot, PersonalData, PlanetData
 
 
 @pytest.fixture(scope="module")
@@ -87,16 +104,32 @@ CLASSICAL_GANA = {
 
 TARA_INAUSPICIOUS_REMAINDERS = {3, 5, 7}
 
-# Vasya points, saravali.de table.  BRIDE on the rows, GROOM on the columns.
+# Vasya points, typed from saravali.de's koota_vashya.html.  BRIDE on the
+# rows, GROOM on the columns.  The page names the groups Quadruped, Human,
+# Jalachara, Leo and Scorpio; here they are chatushpada, nara, jalchar, vanchar
+# and keeta.
 VASYA_GROUPS = ("chatushpada", "nara", "jalchar", "vanchar", "keeta")
 CLASSICAL_VASYA_POINTS = {
     # bride:        groom: chatushpada nara jalchar vanchar keeta
-    "chatushpada": (2.0, 0.5, 1.0, 0.0, 2.0),
-    "nara":        (0.5, 2.0, 0.0, 0.0, 0.0),
-    "jalchar":     (1.0, 0.0, 2.0, 2.0, 2.0),
-    "vanchar":     (0.0, 0.0, 2.0, 2.0, 0.0),
-    "keeta":       (1.0, 0.0, 1.0, 0.0, 2.0),
+    "chatushpada": (2.0, 0.0, 0.0, 0.5, 0.0),
+    "nara":        (1.0, 2.0, 1.0, 0.5, 1.0),
+    "jalchar":     (0.5, 1.0, 2.0, 1.0, 1.0),
+    "vanchar":     (0.0, 0.0, 0.0, 2.0, 0.0),
+    "keeta":       (1.0, 1.0, 1.0, 0.0, 2.0),
 }
+
+# The same table typed a second time, from Maitreya 8's source
+# (src/jyotish/Partner.cpp, ``vashya_map``).  There it is indexed GROOM first,
+# ``vashya_map[groom][bride]``, with the groups in the order of its ``Vashya``
+# enum (src/base/maitreya.h): Quadruped, Human, Jalachara, Leo, Scorpio.
+MAITREYA_VASHYA_MAP = (
+    # groom:         bride: chatushpada nara jalchar vanchar keeta
+    (2.0, 1.0, 0.5, 0.0, 1.0),  # groom chatushpada
+    (0.0, 2.0, 1.0, 0.0, 1.0),  # groom nara
+    (0.0, 1.0, 2.0, 0.0, 1.0),  # groom jalchar
+    (0.5, 0.5, 1.0, 2.0, 0.0),  # groom vanchar
+    (0.0, 1.0, 1.0, 0.0, 2.0),  # groom keeta
+)
 
 # Vasya group of each nakshatra pada (padas 1-4).  "nara/chatushpada" marks the
 # one pada that straddles Sagittarius 15 deg (Purva Ashadha 1: 13.33-16.67) and
@@ -133,7 +166,8 @@ CLASSICAL_PADA_VASYA = {
     "Revati":            (_J, _J, _J, _J),        # Pisces
 }
 
-# Yoni animal and gender of each nakshatra.
+# Yoni animal and gender of each nakshatra, from the "Nakshatra (Male)" and
+# "Nakshatra (Female)" columns of saravali.de's koota_yoni.html.
 CLASSICAL_YONI = {
     "Ashwini": ("horse", "male"),            "Bharani": ("elephant", "male"),
     "Krittika": ("goat", "female"),          "Rohini": ("serpent", "male"),
@@ -151,12 +185,16 @@ CLASSICAL_YONI = {
     "Revati": ("elephant", "female"),
 }
 
-# Yoni points, saravali.de table.  BRIDE on the rows, GROOM on the columns.
+# Yoni points, typed from saravali.de's koota_yoni.html (its "Sheep" is the
+# goat).  BRIDE on the rows, GROOM on the columns.  The page is NOT symmetric in
+# two pairs: a horse bride with a deer groom scores 3 but a deer bride with a
+# horse groom 1, and a lion bride with a buffalo groom scores 2 but a buffalo
+# bride with a lion groom 1.
 YONI_ANIMALS = ("horse", "elephant", "goat", "serpent", "dog", "cat", "rat",
                 "cow", "buffalo", "tiger", "deer", "monkey", "mongoose", "lion")
 CLASSICAL_YONI_POINTS = {
     # bride:     groom: ho el go se do ca ra co bu ti de mo mn li
-    "horse":    (4, 2, 2, 3, 2, 2, 2, 1, 0, 1, 1, 3, 2, 1),
+    "horse":    (4, 2, 2, 3, 2, 2, 2, 1, 0, 1, 3, 3, 2, 1),
     "elephant": (2, 4, 3, 3, 2, 2, 2, 2, 3, 1, 2, 3, 2, 0),
     "goat":     (2, 3, 4, 2, 1, 2, 1, 3, 3, 1, 2, 0, 3, 1),
     "serpent":  (3, 3, 2, 4, 2, 1, 1, 1, 1, 2, 2, 2, 0, 2),
@@ -169,10 +207,11 @@ CLASSICAL_YONI_POINTS = {
     "deer":     (1, 2, 2, 2, 0, 3, 2, 3, 2, 1, 4, 2, 2, 1),
     "monkey":   (3, 3, 0, 2, 2, 3, 2, 2, 2, 1, 2, 4, 3, 2),
     "mongoose": (2, 2, 3, 0, 1, 2, 1, 2, 2, 2, 2, 3, 4, 2),
-    "lion":     (1, 0, 1, 2, 1, 1, 2, 1, 1, 1, 1, 2, 2, 4),
+    "lion":     (1, 0, 1, 2, 1, 1, 2, 1, 2, 1, 1, 2, 2, 4),
 }
 
-# Gana points, saravali.de table.  BRIDE on the rows, GROOM on the columns.
+# Gana points, typed from saravali.de's koota_gana.html.  BRIDE on the rows,
+# GROOM on the columns.
 GANAS = ("deva", "manushya", "rakshasa")
 CLASSICAL_GANA_POINTS = {
     # bride:     groom: deva manushya rakshasa
@@ -298,15 +337,27 @@ def test_vasya_score_matches_the_table_in_every_cell():
     assert wrong == []
 
 
+def test_the_vasya_table_agrees_with_its_second_witness():
+    # A check on the TYPING, not on the engine: the page's table (bride rows)
+    # is the transpose of Maitreya 8's map (groom rows), cell for cell.
+    wrong = [(groom, bride)
+             for b, bride in enumerate(VASYA_GROUPS)
+             for g, groom in enumerate(VASYA_GROUPS)
+             if CLASSICAL_VASYA_POINTS[bride][g] != MAITREYA_VASHYA_MAP[g][b]]
+    assert wrong == []
+
+
 def test_vasya_worked_examples_are_directional():
-    # Keeta groom, chatushpada bride: row chatushpada, column keeta -> 2.
-    assert compat._vasya("keeta", "chatushpada")[0] == 2.0
-    # Chatushpada groom, keeta bride: row keeta, column chatushpada -> 1.
+    # Chatushpada groom, nara bride: row nara, column chatushpada -> 1.
+    assert compat._vasya("chatushpada", "nara")[0] == 1.0
+    # Nara groom, chatushpada bride: row chatushpada, column nara -> 0.
+    assert compat._vasya("nara", "chatushpada")[0] == 0.0
+    # Keeta groom, chatushpada bride -> 0; chatushpada groom, keeta bride -> 1.
+    assert compat._vasya("keeta", "chatushpada")[0] == 0.0
     assert compat._vasya("chatushpada", "keeta")[0] == 1.0
-    # Nara groom, chatushpada bride -> 0.5; a vanchar (Leo) groom with a nara
-    # bride -> 0.
-    assert compat._vasya("nara", "chatushpada")[0] == 0.5
-    assert compat._vasya("vanchar", "nara")[0] == 0.0
+    # A vanchar (Leo) groom with a chatushpada bride -> 0.5; the reverse -> 0.
+    assert compat._vasya("vanchar", "chatushpada")[0] == 0.5
+    assert compat._vasya("chatushpada", "vanchar")[0] == 0.0
 
 
 _PADA = 10.0 / 3.0  # one nakshatra pada, in degrees
@@ -349,6 +400,67 @@ def test_the_split_reads_the_unrounded_longitude():
                       conjunctions=[], aspects=[], is_retrograde=False,
                       longitude_abs=254.99996)
     assert compat.vasya_group(moon.sign, compat._degree_in_sign(moon)) == "nara"
+
+
+def _moon_only_snapshot(sign: str, longitude_abs: float, nakshatra: str) -> ChartSnapshot:
+    # A hand-built snapshot whose Moon carries both the degree the rasi chart
+    # serves (rounded to 4 dp) and the unrounded longitude.
+    moon = PlanetData(planet="Moon", sign=sign,
+                      degrees=round(longitude_abs % 30.0, 4),
+                      nakshatra=nakshatra, dignity="neutral", house=1,
+                      conjunctions=[], aspects=[], is_retrograde=False,
+                      longitude_abs=longitude_abs)
+    return ChartSnapshot(
+        person=PersonalData(name="synthetic", birth_date=datetime.date(2000, 1, 1),
+                            birth_time=datetime.time(12, 0),
+                            birth_place="Synthetic Place", latitude=0.0,
+                            longitude=0.0, timezone_offset_hours=0.0),
+        rasi_chart={"Moon": moon}, hora_chart={}, drekkana_chart={},
+        navamsa_chart={}, decamsa_chart={}, dwadasamsa_chart={},
+        chaturvimsa_chart={}, trimshamsa_chart={}, saptamsa_chart={},
+        shashtyamsa_chart={}, lagna="Aries", lagna_lord="Mars",
+        ayanamsa_value=0.0, house_cusps=[i * 30.0 for i in range(12)],
+    )
+
+
+# A Moon at 14.99996 degrees of Sagittarius or Capricorn: still the FIRST half
+# of the sign, but 15.0 in the rounded field.
+SAG_FIRST_HALF = ("Sagittarius", 254.99996, "Purva Ashadha")  # nara
+CAP_FIRST_HALF = ("Capricorn", 284.99996, "Shravana")         # chatushpada
+ARIES_MOON = ("Aries", 10.0, "Ashwini")                       # chatushpada
+
+
+def test_the_split_snapshots_read_fifteen_in_the_rounded_field():
+    for spec in (SAG_FIRST_HALF, CAP_FIRST_HALF):
+        assert _moon_only_snapshot(*spec).rasi_chart["Moon"].degrees == 15.0
+
+
+@pytest.mark.parametrize("groom,bride,expected", [
+    # Groom in the first half of Sagittarius (nara), chatushpada bride: row
+    # chatushpada, column nara -> 0.  Read as chatushpada it would be 2.
+    (SAG_FIRST_HALF, ARIES_MOON, 0.0),
+    # Groom in the first half of Capricorn (chatushpada), chatushpada bride:
+    # same group -> 2.  Read as jalchar it would be 0.
+    (CAP_FIRST_HALF, ARIES_MOON, 2.0),
+    # Chatushpada groom, bride in the first half of Sagittarius (nara): row
+    # nara, column chatushpada -> 1.  Read as chatushpada it would be 2.
+    (ARIES_MOON, SAG_FIRST_HALF, 1.0),
+    # Chatushpada groom, bride in the first half of Capricorn (chatushpada):
+    # same group -> 2.  Read as jalchar it would be 0.5.
+    (ARIES_MOON, CAP_FIRST_HALF, 2.0),
+], ids=["groom-sagittarius", "groom-capricorn", "bride-sagittarius", "bride-capricorn"])
+def test_compute_compat_splits_vasya_on_the_unrounded_longitude(groom, bride, expected):
+    result = compat.compute_compat(_moon_only_snapshot(*groom),
+                                   _moon_only_snapshot(*bride),
+                                   datetime.date(2026, 1, 1))
+    assert {k.name: k.score for k in result.kutas}["vasya"] == expected
+
+
+@pytest.mark.parametrize("spec,group", [
+    (SAG_FIRST_HALF, "nara"), (CAP_FIRST_HALF, "chatushpada"),
+], ids=["sagittarius", "capricorn"])
+def test_avkahada_splits_vasya_on_the_unrounded_longitude(spec, group):
+    assert profile.avkahada_chakra(_moon_only_snapshot(*spec))["vasya"] == group
 
 
 # ---------------------------------------------------------------------------
@@ -405,36 +517,69 @@ def test_yoni_worked_examples():
     assert compat._yoni("Ashwini", "Rohini")[0] == 3.0
     # Ashwini (horse) and Uttara Phalguni (cow) -> unfriendly, 1.
     assert compat._yoni("Ashwini", "Uttara Phalguni")[0] == 1.0
-    # Ashwini (horse) and Anuradha (deer) -> 1 in this table (3 in others).
-    assert compat._yoni("Anuradha", "Ashwini")[0] == 1.0
+    # The two pairs in which the page is not symmetric.  Anuradha (deer)
+    # groom, Ashwini (horse) bride: row horse, column deer -> 3; the reverse
+    # -> 1.  Swati (buffalo) groom, Dhanishta (lion) bride: row lion, column
+    # buffalo -> 2; the reverse -> 1.
+    assert compat._yoni("Anuradha", "Ashwini")[0] == 3.0
+    assert compat._yoni("Ashwini", "Anuradha")[0] == 1.0
+    assert compat._yoni("Swati", "Dhanishta")[0] == 2.0
+    assert compat._yoni("Dhanishta", "Swati")[0] == 1.0
     # Swati (buffalo) and Ashwini (horse) -> sworn enemies, 0.
     assert compat._yoni("Swati", "Ashwini")[0] == 0.0
     # Magha (rat) and Ashlesha (cat) -> sworn enemies, 0.
     assert compat._yoni("Magha", "Ashlesha")[0] == 0.0
 
 
+def test_yoni_interpretation_names_the_groom_and_the_bride():
+    # The score of a pair can depend on who is the groom, so the prose says
+    # whose yoni is whose instead of describing the two animals as one pair.
+    _, interp = compat._yoni("Anuradha", "Ashwini")
+    assert interp.startswith("The groom's deer yoni and the bride's horse yoni are friendly")
+    _, interp = compat._yoni("Ashwini", "Anuradha")
+    assert interp.startswith("The groom's horse yoni and the bride's deer yoni are unfriendly")
+
+
 # ---------------------------------------------------------------------------
-# The hand-typed tables agree with the cited transcription
+# Where the hand-typed tables agree with the library's arrays
 # ---------------------------------------------------------------------------
 
-def test_hand_typed_point_tables_match_the_cited_transcription():
-    # A check on the TYPING above, against the published table as PyJHora
-    # 4.8.7 transcribes it -- never against the engine under test.
-    from jhora.horoscope.match import compatibility as cited
+def test_where_the_hand_typed_tables_agree_with_the_library_arrays():
+    # PyJHora labels its arrays as saravali.de's.  This states, cell by cell,
+    # where they agree with the tables typed above from the pages -- never a
+    # check against the engine under test.  Where they disagree, the page is
+    # served.
+    from jhora.horoscope.match import compatibility as library
 
     vasya_names = {"Chathushpadha": "chatushpada", "Manava": "nara",
                    "Jalachara": "jalchar", "Vanachara": "vanchar", "Keeta": "keeta"}
-    assert tuple(vasya_names[c] for c in cited.vasiya_categories) == VASYA_GROUPS
-    assert [list(CLASSICAL_VASYA_POINTS[g]) for g in VASYA_GROUPS] == cited.VasiyaArray
+    assert tuple(vasya_names[c] for c in library.vasiya_categories) == VASYA_GROUPS
+    vasya_agree = {(bride, groom)
+                   for b, bride in enumerate(VASYA_GROUPS)
+                   for g, groom in enumerate(VASYA_GROUPS)
+                   if CLASSICAL_VASYA_POINTS[bride][g] == library.VasiyaArray[b][g]}
+    # (bride, groom).  11 of the 25 cells: the five same-group cells, and three
+    # more in each of the vanchar and keeta bride rows.  The other 14 differ.
+    assert vasya_agree == {
+        ("chatushpada", "chatushpada"), ("nara", "nara"), ("jalchar", "jalchar"),
+        ("vanchar", "vanchar"), ("keeta", "keeta"),
+        ("vanchar", "chatushpada"), ("vanchar", "nara"), ("vanchar", "keeta"),
+        ("keeta", "chatushpada"), ("keeta", "jalchar"), ("keeta", "vanchar"),
+    }
 
     yoni_names = {"Sheep": "goat", "Serpant": "serpent"}
-    cited_animals = tuple(yoni_names.get(a, a.lower()) for a in cited.yoni_categories)
-    assert cited_animals == YONI_ANIMALS
-    assert [list(CLASSICAL_YONI_POINTS[a]) for a in YONI_ANIMALS] == cited.YoniArray
+    library_animals = tuple(yoni_names.get(a, a.lower()) for a in library.yoni_categories)
+    assert library_animals == YONI_ANIMALS
+    yoni_differ = {(bride, groom): (CLASSICAL_YONI_POINTS[bride][g], library.YoniArray[b][g])
+                   for b, bride in enumerate(YONI_ANIMALS)
+                   for g, groom in enumerate(YONI_ANIMALS)
+                   if CLASSICAL_YONI_POINTS[bride][g] != library.YoniArray[b][g]}
+    # (bride, groom): (page, library).  The other 194 cells agree.
+    assert yoni_differ == {("horse", "deer"): (3, 1), ("lion", "buffalo"): (2, 1)}
     assert [CLASSICAL_YONI[n][0] for n in utils.NAKSHATRAS] == \
-        [cited_animals[i] for i in cited.yoni_mappings]
+        [library_animals[i] for i in library.yoni_mappings]
 
-    assert [list(CLASSICAL_GANA_POINTS[g]) for g in GANAS] == cited.gana_array
+    assert [list(CLASSICAL_GANA_POINTS[g]) for g in GANAS] == library.gana_array
 
 
 # ---------------------------------------------------------------------------
@@ -563,6 +708,10 @@ def test_compat_request_schema_names_the_groom_and_the_bride():
     fields = CompatRequest.model_fields
     assert (fields["person_a"].description or "").startswith("The GROOM")
     assert (fields["person_b"].description or "").startswith("The BRIDE")
+    # Yoni also scores two animal pairs differently when swapped, so it is
+    # named with the other directional kootas.
+    for name in ("person_a", "person_b"):
+        assert "Varna, Vasya, Gana and Yoni" in (fields[name].description or "")
 
 
 def test_compat_route_scores_gana_with_person_a_as_the_groom(client):
@@ -576,22 +725,30 @@ def test_compat_route_scores_gana_with_person_a_as_the_groom(client):
 
 def test_compat_route_serves_the_vasya_half_sign_split(client):
     # Moon in the second half of Sagittarius is chatushpada, not nara, so with
-    # an Aries (chatushpada) bride the groom scores the full 2.
+    # an Aries (chatushpada) bride the groom scores the full 2 (0 as nara).
     assert _kutas(client, PURVA_ASHADHA, ASHWINI_1)["vasya"] == 2.0
-    # Second half of Capricorn is jalchar, not chatushpada: a chatushpada
-    # (Aries) groom with that bride is row jalchar, column chatushpada -> 1;
-    # that bride as groom with a nara (Ardra, Gemini) bride -> row nara,
-    # column jalchar -> 0.
-    assert _kutas(client, SHRAVANA, ARDRA)["vasya"] == 0.0
-    assert _kutas(client, ASHWINI_1, SHRAVANA)["vasya"] == 1.0
+    # Second half of Capricorn is jalchar, not chatushpada: that Moon as the
+    # groom with an Aries (chatushpada) bride is row chatushpada, column
+    # jalchar -> 0 (2 as chatushpada); as the bride with an Aries groom, row
+    # jalchar, column chatushpada -> 0.5 (2 as chatushpada).
+    assert _kutas(client, SHRAVANA, ASHWINI_1)["vasya"] == 0.0
+    assert _kutas(client, ASHWINI_1, SHRAVANA)["vasya"] == 0.5
 
 
 def test_compat_route_scores_vasya_with_person_a_as_the_groom(client):
     # The vasya table is not symmetric.  A keeta (Scorpio) groom with a
-    # chatushpada (Aries) bride: row chatushpada, column keeta -> 2.  The same
+    # chatushpada (Aries) bride: row chatushpada, column keeta -> 0.  The same
     # two charts the other way round: row keeta, column chatushpada -> 1.
-    assert _kutas(client, ANURADHA, ASHWINI_1)["vasya"] == 2.0
+    assert _kutas(client, ANURADHA, ASHWINI_1)["vasya"] == 0.0
     assert _kutas(client, ASHWINI_1, ANURADHA)["vasya"] == 1.0
+
+
+def test_compat_route_scores_yoni_with_person_a_as_the_groom(client):
+    # Anuradha (deer) groom with an Ashwini (horse) bride: row horse, column
+    # deer -> 3.  The same two charts the other way round: row deer, column
+    # horse -> 1.
+    assert _kutas(client, ANURADHA, ASHWINI_1)["yoni"] == 3.0
+    assert _kutas(client, ASHWINI_1, ANURADHA)["yoni"] == 1.0
 
 
 def test_compat_route_serves_the_yoni_table(client):

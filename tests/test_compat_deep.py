@@ -129,27 +129,27 @@ class TestVasya:
         assert score == 2.0
         assert "same vasya group" in interp
 
-    def test_full_points_across_groups(self):
-        # Keeta groom, chatushpada bride -> 2.0
-        score, interp = compat._vasya("keeta", "chatushpada")  # _vasya: full-points tier (2.0)
-        assert score == 2.0
-        assert "fully compatible in vasya" in interp
+    def test_only_the_same_group_scores_full_points(self):
+        # In the table only the five same-group cells score 2.
+        full = {(g, b) for g in compat._VASYA_ORDER for b in compat._VASYA_ORDER
+                if compat._vasya(g, b)[0] == 2.0}
+        assert full == {(g, g) for g in compat._VASYA_ORDER}
 
     def test_partial(self):
-        # Chatushpada groom, jalchar bride -> 1.0
-        score, interp = compat._vasya("chatushpada", "jalchar")  # _vasya: partial tier (1.0)
+        # Chatushpada groom, nara bride -> 1.0
+        score, interp = compat._vasya("chatushpada", "nara")  # _vasya: partial tier (1.0)
         assert score == 1.0
         assert "partly compatible in vasya" in interp
 
     def test_slight(self):
-        # Nara groom, chatushpada bride -> 0.5
-        score, interp = compat._vasya("nara", "chatushpada")
+        # Chatushpada groom, jalchar bride -> 0.5
+        score, interp = compat._vasya("chatushpada", "jalchar")
         assert score == 0.5
         assert "only slightly compatible" in interp
 
     def test_no_affinity(self):
-        # Jalchar groom, nara bride -> 0.0
-        score, interp = compat._vasya("jalchar", "nara")
+        # Nara groom, chatushpada bride -> 0.0
+        score, interp = compat._vasya("nara", "chatushpada")
         assert score == 0.0
         assert "no natural affinity" in interp
 
