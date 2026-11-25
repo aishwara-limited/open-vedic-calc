@@ -121,27 +121,35 @@ class TestVarna:
 # ---------------------------------------------------------------------------
 
 class TestVasya:
+    # Arguments are (groom's vasya group, bride's vasya group).  The full 5 x 5
+    # table and the half-sign splits are pinned in
+    # tests/test_ashtakoota_classical_tables.py; these pin each tier's prose.
     def test_same_group(self):
-        # Aries & Taurus both chatushpada -> _vasya: `ga == gb` same-group tier (2.0)
-        score, interp = compat._vasya("Aries", "Taurus")
+        score, interp = compat._vasya("chatushpada", "chatushpada")  # _vasya: same-group tier (2.0)
         assert score == 2.0
         assert "same vasya group" in interp
 
-    def test_a_controlled_by_b(self):
-        # _VASYA_CONTROLS["Leo"] == {"Aries"} -> sign_a=Aries controlled by b=Leo
-        score, interp = compat._vasya("Aries", "Leo")  # _vasya: `sign_a in controlled_by_b` tier (1.0)
-        assert score == 1.0
-        assert "supportive power dynamic" in interp
+    def test_full_points_across_groups(self):
+        # Keeta groom, chatushpada bride -> 2.0
+        score, interp = compat._vasya("keeta", "chatushpada")  # _vasya: full-points tier (2.0)
+        assert score == 2.0
+        assert "fully compatible in vasya" in interp
 
-    def test_b_controlled_by_a(self):
-        # _VASYA_CONTROLS["Leo"] == {"Aries"} -> sign_b=Aries controlled by a=Leo
-        score, interp = compat._vasya("Leo", "Aries")  # _vasya: `sign_b in controlled_by_a` tier (0.5)
+    def test_partial(self):
+        # Chatushpada groom, jalchar bride -> 1.0
+        score, interp = compat._vasya("chatushpada", "jalchar")  # _vasya: partial tier (1.0)
+        assert score == 1.0
+        assert "partly compatible in vasya" in interp
+
+    def test_slight(self):
+        # Nara groom, chatushpada bride -> 0.5
+        score, interp = compat._vasya("nara", "chatushpada")
         assert score == 0.5
-        assert "Partial vasya relationship" in interp
+        assert "only slightly compatible" in interp
 
     def test_no_affinity(self):
-        # Gemini (nara) & Cancer (jalchar), no control either way
-        score, interp = compat._vasya("Gemini", "Cancer")
+        # Jalchar groom, nara bride -> 0.0
+        score, interp = compat._vasya("jalchar", "nara")
         assert score == 0.0
         assert "no natural affinity" in interp
 
@@ -198,16 +206,28 @@ class TestYoni:
         assert "horse yoni" in interp
 
     def test_enemy_animals(self):
-        # Ashwini=horse, Swati=buffalo -> _yoni: `pair in _YONI_ENEMIES` tier (0.0)
+        # Ashwini=horse, Swati=buffalo -> _yoni: sworn-enemies tier (0.0)
         score, interp = compat._yoni("Ashwini", "Swati")
         assert score == 0.0
         assert "natural enemies" in interp
+
+    def test_friendly_animals(self):
+        # Ashwini=horse, Rohini=serpent -> friendly (3.0)
+        score, interp = compat._yoni("Ashwini", "Rohini")
+        assert score == 3.0
+        assert "are friendly" in interp
 
     def test_neutral_animals(self):
         # Ashwini=horse, Bharani=elephant -> neutral
         score, interp = compat._yoni("Ashwini", "Bharani")
         assert score == 2.0
         assert "neutral toward each other" in interp
+
+    def test_unfriendly_animals(self):
+        # Ashwini=horse, Uttara Phalguni=cow -> unfriendly (1.0)
+        score, interp = compat._yoni("Ashwini", "Uttara Phalguni")
+        assert score == 1.0
+        assert "are unfriendly" in interp
 
     def test_missing_yoni_data(self):
         # Unknown nakshatra -> NAKSHATRA_YONI.get returns None
@@ -285,21 +305,35 @@ class TestGana:
         assert score == 6.0
         assert "deva gana" in interp
 
-    def test_deva_manushya(self):
-        # Ashwini(deva) & Bharani(manushya) -> 5.0
+    # Arguments are (groom's nakshatra, bride's nakshatra); the table is
+    # directional.
+    def test_deva_groom_manushya_bride(self):
+        # Ashwini(deva) groom & Bharani(manushya) bride -> 5.0
         score, interp = compat._gana("Ashwini", "Bharani")
         assert score == 5.0
         assert "generally compatible" in interp
 
-    def test_manushya_rakshasa(self):
-        # Bharani(manushya) & Krittika(rakshasa) -> 0.0
+    def test_manushya_groom_deva_bride(self):
+        # Bharani(manushya) groom & Ashwini(deva) bride -> 6.0
+        score, interp = compat._gana("Bharani", "Ashwini")
+        assert score == 6.0
+        assert "fully compatible in temperament" in interp
+
+    def test_manushya_groom_rakshasa_bride(self):
+        # Bharani(manushya) groom & Krittika(rakshasa) bride -> 0.0
         score, interp = compat._gana("Bharani", "Krittika")
         assert score == 0.0
-        assert "deep mutual respect" in interp
+        assert "fundamentally mismatched" in interp
 
-    def test_deva_rakshasa(self):
-        # Ashwini(deva) & Krittika(rakshasa) -> _gana: deva+rakshasa fall-through return (0.0)
+    def test_deva_groom_rakshasa_bride(self):
+        # Ashwini(deva) groom & Krittika(rakshasa) bride -> _gana: largely-mismatched tier (1.0)
         score, interp = compat._gana("Ashwini", "Krittika")
+        assert score == 1.0
+        assert "largely mismatched" in interp
+
+    def test_rakshasa_groom_deva_bride(self):
+        # Krittika(rakshasa) groom & Ashwini(deva) bride -> 0.0
+        score, interp = compat._gana("Krittika", "Ashwini")
         assert score == 0.0
         assert "fundamentally mismatched" in interp
 

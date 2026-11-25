@@ -929,9 +929,18 @@ class FamilyLagnaShuddhiJobStatus(BaseModel):
 
 # --- Compatibility ---
 
+_COMPAT_ORDER = (
+    "Ashtakoota is scored for an ORDERED pair: person_a is the GROOM (boy) and "
+    "person_b is the BRIDE (girl). Varna, Vasya and Gana koota score "
+    "differently when the two are swapped, so send them in this order."
+)
+
+
 class CompatRequest(BaseModel):
-    person_a: PersonalDataIn
-    person_b: PersonalDataIn
+    person_a: PersonalDataIn = Field(
+        description="The GROOM (boy). " + _COMPAT_ORDER)
+    person_b: PersonalDataIn = Field(
+        description="The BRIDE (girl). " + _COMPAT_ORDER)
     # The TENTH date input, and the one the IsoDateStr sweep missed: it is a
     # `date`, so it never matched that grep. Unbounded it reached
     # compute_dasha_overlaps, where `window_start + timedelta(days=25*365.25)`
