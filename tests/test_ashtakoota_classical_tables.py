@@ -67,7 +67,7 @@ os.environ.setdefault("CALC_SERVICE_TOKEN", "test")
 os.environ.setdefault("PUBLIC_SOURCE_URL", "https://example.com")
 
 from app.main import app
-from bphs_core import compat, profile, utils
+from bphs_core import compat, profile, strength, utils
 from bphs_core.chart import ChartSnapshot, PersonalData, PlanetData
 
 
@@ -449,7 +449,19 @@ def test_the_split_snapshots_read_fifteen_in_the_rounded_field():
     # same group -> 2.  Read as jalchar it would be 0.5.
     (ARIES_MOON, CAP_FIRST_HALF, 2.0),
 ], ids=["groom-sagittarius", "groom-capricorn", "bride-sagittarius", "bride-capricorn"])
-def test_compute_compat_splits_vasya_on_the_unrounded_longitude(groom, bride, expected):
+def test_compute_compat_splits_vasya_on_the_unrounded_longitude(groom, bride, expected,
+                                                                monkeypatch):
+    # A Moon-only snapshot has no classical Bhavabala: compute_all_bhavabala
+    # needs all seven grahas and a real birth instant, and raises without
+    # them.  compute_compat reaches it only for the composite strength note,
+    # which has no part in the vasya score, so it is patched out here as in
+    # test_compat_deep's TestComputeCompat.
+    monkeypatch.setattr(strength, "compute_all_bhavabala", lambda _snap: [
+        strength.BhavabalaResult(house_number=h, bala_total=1.0,
+                                 bhava_adhipathi_bala=1.0, bhava_drik=0.0,
+                                 rank="average")
+        for h in range(1, 13)
+    ])
     result = compat.compute_compat(_moon_only_snapshot(*groom),
                                    _moon_only_snapshot(*bride),
                                    datetime.date(2026, 1, 1))
