@@ -83,6 +83,9 @@ def test_every_c_library_entry_point_is_serialized():
     entry_points = [
         Chart._compute,
         muhurat.compute_muhurat_for_day,
+        # The tithi/karana/yoga at each candidate instant -- both of its Sun
+        # and Moon reads under one hold.
+        muhurat.panchanga_at_instant,
         lagna_shuddhi._jd_for_local,
         lagna_shuddhi.compute_lagna_at_jd,
         lagna_shuddhi._score_instant,
