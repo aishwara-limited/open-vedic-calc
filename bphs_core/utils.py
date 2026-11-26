@@ -1373,10 +1373,27 @@ _OWN_SIGNS: dict[str, list[str]] = {
     "Mercury": ["Gemini", "Virgo"], "Jupiter": ["Sagittarius", "Pisces"],
     "Venus": ["Taurus", "Libra"], "Saturn": ["Capricorn", "Aquarius"],
 }
-_MOOLATRIKONA: dict[str, str] = {
-    "Sun": "Leo", "Moon": "Taurus", "Mars": "Aries",
-    "Mercury": "Virgo", "Jupiter": "Sagittarius", "Venus": "Libra", "Saturn": "Aquarius",
+# Moolatrikona arcs in the rasi chart, BPHS 3.51-54: (sign, from degree, to
+# degree). The Sun's is Leo 0-20 and the rest of Leo is his own sign; the
+# Moon's is Taurus after her 3 degrees of exaltation; Mars's Aries 0-12;
+# Mercury's the 5 degrees of Virgo after his 15 degrees of exaltation, with
+# the last 10 his own sign; Jupiter's Sagittarius 0-10; Venus's Libra 0-15;
+# Saturn's Aquarius 0-20. One table for the served rasi label
+# (get_rasi_dignity) and for Shadbala's saptavargaja state
+# (strength.varga_state), so the two can never disagree.
+MOOLATRIKONA_ARC: dict[str, tuple[str, float, float]] = {
+    "Sun": ("Leo", 0.0, 20.0),
+    "Moon": ("Taurus", 3.0, 30.0),
+    "Mars": ("Aries", 0.0, 12.0),
+    "Mercury": ("Virgo", 15.0, 20.0),
+    "Jupiter": ("Sagittarius", 0.0, 10.0),
+    "Venus": ("Libra", 0.0, 15.0),
+    "Saturn": ("Aquarius", 0.0, 20.0),
 }
+# Where exaltation and moolatrikona share a sign, BPHS 3.52-53 give exaltation
+# only the opening degrees: the Moon Taurus 0-3, Mercury Virgo 0-15. Every other
+# graha is exalted in the whole of its exaltation sign (BPHS 3.49-50).
+_EXALTATION_ARC_END: dict[str, float] = {"Moon": 3.0, "Mercury": 15.0}
 _FRIENDLY: dict[str, list[str]] = {
     "Sun": ["Moon", "Mars", "Jupiter"],
     "Moon": ["Sun", "Mercury"],
@@ -1412,14 +1429,46 @@ def get_sign_lord(sign: str) -> str:
 
 
 def get_planet_dignity(planet: str, sign: str) -> str:
+    """A graha's dignity in a VARGA, judged by sign alone.
+
+    A divisional chart carries no degree that BPHS 3.51-54 measure their arcs
+    in, and BPHS 27.2-4 judge a varga by its sign, so moolatrikona and
+    exaltation hold the whole sign here. The rasi chart uses get_rasi_dignity.
+    """
     if planet in ("Rahu", "Ketu"):
         return "neutral"
     if _EXALTATION.get(planet) == sign:
         return "exalted"
     if _DEBILITATION.get(planet) == sign:
         return "debilitated"
-    if sign == _MOOLATRIKONA.get(planet):
+    if sign == MOOLATRIKONA_ARC[planet][0]:
         return "moolatrikona"
+    return _dignity_by_lordship(planet, sign)
+
+
+def get_rasi_dignity(planet: str, longitude: float) -> str:
+    """A graha's dignity in the RASI chart, by the arcs of BPHS 3.49-54.
+
+    Moolatrikona holds only its arc (MOOLATRIKONA_ARC) and the rest of that
+    sign is the graha's own sign, or for the Moon in Taurus its exaltation;
+    the Moon's and Mercury's exaltation hold only the degrees before their
+    moolatrikona arc (_EXALTATION_ARC_END).
+    """
+    if planet in ("Rahu", "Ketu"):
+        return "neutral"
+    sign, degree = longitude_to_sign_and_degree(longitude)
+    mt_sign, mt_from, mt_to = MOOLATRIKONA_ARC[planet]
+    if sign == mt_sign and mt_from <= degree < mt_to:
+        return "moolatrikona"
+    if _EXALTATION[planet] == sign and degree < _EXALTATION_ARC_END.get(planet, 30.0):
+        return "exalted"
+    if _DEBILITATION[planet] == sign:
+        return "debilitated"
+    return _dignity_by_lordship(planet, sign)
+
+
+def _dignity_by_lordship(planet: str, sign: str) -> str:
+    """Own sign, or the natural relationship (BPHS 3.55) with the sign lord."""
     if sign in _OWN_SIGNS.get(planet, []):
         return "own sign"
     sign_lord = get_sign_lord(sign)

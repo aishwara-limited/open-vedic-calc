@@ -1,60 +1,48 @@
 """Vimshopaka Bala — 20-point cross-varga strength (BPHS Dashavarga scheme).
 
-Vimshopaka ("twenty-fold") strength rates how consistently a graha holds good
-dignity across a set of divisional charts. This module implements the
-**Dashavarga** (ten-varga) scheme, the BPHS standard for general assessment.
+Vimshopaka ("twenty-fold") strength rates how well a graha is placed across a
+set of divisional charts. This module implements the **Dashavarga** (ten-varga)
+scheme of BPHS ch. 7 vv. 20-27.
 
-Wrap vs. hand-roll
-------------------
-* The ten vargas and their point-weights are taken **verbatim from pyjhora**
-  (``jhora.const.dhasavarga_amsa_vimsopaka``) so the engine stays pinned to the
-  same classical table the rest of pyjhora uses:
+Weights
+-------
+The ten vargas and their point-weights (BPHS 7.20) are taken **verbatim from
+pyjhora** (``jhora.const.dhasavarga_amsa_vimsopaka``):
 
-      D1 Rasi 3, D2 Hora 1.5, D3 Drekkana 1.5, D7 Saptamsa 1.5, D9 Navamsa 1.5,
-      D10 Dasamsa 1.5, D12 Dwadasamsa 1.5, D16 Shodasamsa 1.5, D30 Trimsamsa 1.5,
-      D60 Shashtiamsa 5  ——  total 20.
+    D1 Rasi 3, D2 Hora 1.5, D3 Drekkana 1.5, D7 Saptamsa 1.5, D9 Navamsa 1.5,
+    D10 Dasamsa 1.5, D12 Dwadasamsa 1.5, D16 Shodasamsa 1.5, D30 Trimsamsa 1.5,
+    D60 Shashtiamsa 5  ——  total 20.
 
-  We assert at import time that this wrapped table both sums to 20 and matches
-  the BPHS Dashavarga set, so a future pyjhora bump can never silently change
-  the weighting underneath us.
+We assert at import time that this wrapped table both sums to 20 and matches
+the BPHS Dashavarga set, so a future pyjhora bump can never silently change
+the weighting underneath us.
 
-* The **per-varga dignity factor** is hand-implemented per standard BPHS
-  practice (the explicit dignity-fraction ladder below), NOT pyjhora's
-  compound-relationship ``vimsopaka_bala_scores`` table. pyjhora's scorer
-  recomputes every divisional chart from the raw ``jd``/``place`` and leans on
-  its internal ``house``/``const`` relationship machinery; it does not operate
-  over a :class:`ChartSnapshot`. To stay consistent with the rest of this engine
-  (pure functions over the snapshot, fail-closed on missing data, the dignity
-  strings already attached to every ``PlanetData``) we score dignity from the
-  snapshot's own ``dignity`` field. The ladder is documented on
-  ``_DIGNITY_FACTOR``.
+Score in each varga
+-------------------
+BPHS 7.24-25: a graha in its own sign in a varga scores 20; otherwise it scores
+by its five-fold (compound) relationship with the lord of that varga sign —
+adhimitra (great friend) 18, mitra (friend) 15, sama (neutral) 10, shatru
+(enemy) 7, adhishatru (great enemy) 5. The compound relationship is BPHS
+3.55-58: the natural relationship combined with the temporary one, which is
+read from the rasi chart (``strength.compound_relationship``, the function
+Shadbala's saptavargaja bala uses). The varga's share is its weight times that
+score over 20. The verse has no separate step for exaltation or debilitation:
+a graha exalted or debilitated in a varga scores by its relationship with the
+sign's lord like any other. pyjhora's ``_vimsopaka_bala_of_planets`` applies
+the same rule; it recomputes every divisional chart from the raw ``jd``, so
+this module scores the snapshot's own vargas instead.
 
-Source: BPHS ch. on Shadvarga/Dashavarga Vimshopaka Bala (Parashara); weight
-table cross-checked against ``jhora.const.dhasavarga_amsa_vimsopaka``.
+Grades
+------
+BPHS 7.26-27 read a total below 5 as unable to give good results, 5-10 as
+meagre, 10-15 as middling and 15 or more as full. ``grade`` serves those four
+bands under this API's labels: very weak, weak, good and excellent.
 """
 from dataclasses import dataclass, field
 
-# Imported for its IMPORT-TIME EFFECT, not for a name used below, so it is
-# suppressed rather than deleted. `bphs_core.utils` applies this engine's
-# declared astronomical choices at its module level -- the lunar node model, the
-# swisseph position-flag word, the sunrise/sunset convention words -- and
-# hard-fails if the library will not carry them. `bphs_core/__init__.py` imports
-# it first for exactly this reason and carries the same suppression.
-#
-# That package init makes this line redundant, and the redundancy is a LANGUAGE
-# GUARANTEE rather than a property of today's import graph: Python always
-# executes a package's `__init__` before any of its submodules. (An earlier
-# revision of this comment claimed the weaker thing, which overstated the risk
-# being guarded against -- worth correcting, since a reason that is wrong is a
-# reason nobody can check.)
-#
-# It is kept anyway, on the same defense-in-depth footing CLAUDE.md records for
-# `Chart._compute` re-asserting the ayanamsa on top of the decorator that already
-# applied it: deleting it to satisfy a linter would be a change to an accuracy
-# engine's import order driven by a lint preference, with no test that failed
-# first. The suppression costs one line; the deletion buys nothing.
-from . import utils  # noqa: F401
+from . import utils
 from .chart import ChartSnapshot
+from .strength import compound_relationship
 
 try:  # wrap pyjhora's pinned Dashavarga weight table
     from jhora import const as _jhora_const
@@ -93,38 +81,23 @@ assert abs(sum(_DASHAVARGA_WEIGHTS_RAW.values()) - 20.0) < 1e-9, (
     "Dashavarga Vimshopaka weights must total 20"
 )
 
-# Per-varga dignity factor (standard BPHS practice). Multiplies the varga weight:
-# a planet exalted/moolatrikona/own in a varga earns the full weight; a debilitated
-# planet earns none. Monotonic by classical strength order.
-#   exalted / moolatrikona / own sign  -> 1.0
-#   great friend                       -> 0.9
-#   friend                             -> 0.75
-#   neutral                            -> 0.5
-#   enemy                              -> 0.25
-#   great enemy                        -> 0.125
-#   debilitated                        -> 0.0
-_DIGNITY_FACTOR: dict[str, float] = {
-    "exalted": 1.0,
-    "moolatrikona": 1.0,
-    "own sign": 1.0,
-    "great friend": 0.9,
-    "friendly": 0.75,
-    "friend": 0.75,
-    "neutral": 0.5,
-    "enemy": 0.25,
-    "great enemy": 0.125,
-    "debilitated": 0.0,
+# BPHS 7.24-25: the score out of 20 in one varga, by the graha's own sign or
+# its compound relationship (BPHS 3.55-58) with the varga sign's lord.
+_VIMSHOPAKA_SCORE: dict[str, float] = {
+    "own": 20.0,
+    "great friend": 18.0,
+    "friend": 15.0,
+    "neutral": 10.0,
+    "enemy": 7.0,
+    "great enemy": 5.0,
 }
 
-# The engine's get_planet_dignity() emits these dignity strings. "great friend"
-# / "great enemy" are not currently produced (the friendship table is two-tier),
-# but the ladder maps them so the factor is correct if a five-tier table lands.
 
-# Grade bands (BPHS Vimshopaka convention, 0-20 scale):
-#   < 5   very weak
-#   5-10  weak
-#   10-15 good
-#   >= 15 excellent
+# Grade bands, BPHS 7.26-27 (0-20 scale), served under this API's labels:
+#   < 5   very weak  (unable to give good results)
+#   5-10  weak       (meagre)
+#   10-15 good       (middling)
+#   >= 15 excellent  (full)
 def _grade(total: float) -> str:
     if total >= 15.0:
         return "excellent"
@@ -143,22 +116,39 @@ class VimshopakaResult:
     contributions: dict[str, float] = field(default_factory=dict)  # {varga_label: points}
 
 
-# The 7 grahas always carry a computable dignity in every varga. Rahu/Ketu are
-# excluded: the engine's dignity model returns a fixed "neutral" for the nodes in
-# every sign (utils.get_planet_dignity), so their Vimshopaka would be a constant
-# 0.5 * total weight = 10 with no cross-varga signal — meaningless as a strength
-# metric. Documented choice: grahas only.
+# The seven grahas. Rahu and Ketu are excluded: they lord no sign in the
+# sign-lordship table this engine reads (utils.SIGN_LORDS) and have no natural
+# relationships in it (utils._FRIENDLY / utils._ENEMY), so neither "own varga"
+# nor the compound relationship with a varga lord is defined for them.
 _VIMSHOPAKA_PLANETS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"]
 
 
-def _dignity_factor(dignity: str) -> float:
-    # Fail-closed: an unrecognised dignity string scores as neutral (0.5) rather
-    # than crashing, but never silently as full strength.
-    return _DIGNITY_FACTOR.get(dignity, 0.5)
+def _rasi_longitudes(snapshot: ChartSnapshot) -> dict[str, float]:
+    """The rasi sign of each graha, as a longitude at the start of the sign:
+    the temporary relationship of BPHS 3.56 counts signs, not degrees.
+
+    Fail closed: every graha may be a varga lord, so a rasi chart without all
+    seven cannot be scored, and is refused rather than scored as nothing.
+    """
+    missing = [p for p in _VIMSHOPAKA_PLANETS if p not in snapshot.rasi_chart]
+    if missing:
+        raise ValueError(f"Vimshopaka needs all seven grahas; the chart lacks {missing}")
+    return {
+        p: utils.SIGNS.index(snapshot.rasi_chart[p].sign) * 30.0
+        for p in _VIMSHOPAKA_PLANETS
+    }
+
+
+def _varga_score(planet: str, sign: str, rasi_longitudes: dict[str, float]) -> float:
+    if sign in utils._OWN_SIGNS[planet]:
+        return _VIMSHOPAKA_SCORE["own"]
+    lord = utils.SIGN_LORDS[sign]
+    return _VIMSHOPAKA_SCORE[compound_relationship(planet, lord, rasi_longitudes)]
 
 
 def compute_vimshopaka(snapshot: ChartSnapshot, planet: str) -> VimshopakaResult:
     """Vimshopaka Bala (Dashavarga, 0-20) for one graha over the snapshot."""
+    rasi_longitudes = _rasi_longitudes(snapshot)
     contributions: dict[str, float] = {}
     total = 0.0
     for dcf, attr in _VARGA_ATTR.items():
@@ -169,7 +159,7 @@ def compute_vimshopaka(snapshot: ChartSnapshot, planet: str) -> VimshopakaResult
             # Fail-closed: a missing placement contributes nothing.
             points = 0.0
         else:
-            points = weight * _dignity_factor(pd.dignity)
+            points = weight * _varga_score(planet, pd.sign, rasi_longitudes) / 20.0
         contributions[_VARGA_LABEL[dcf]] = round(points, 4)
         total += points
     total = round(total, 2)
@@ -183,8 +173,4 @@ def compute_vimshopaka(snapshot: ChartSnapshot, planet: str) -> VimshopakaResult
 
 def compute_all_vimshopaka(snapshot: ChartSnapshot) -> list[VimshopakaResult]:
     """Vimshopaka Bala for all seven grahas (Rahu/Ketu excluded — see module note)."""
-    return [
-        compute_vimshopaka(snapshot, p)
-        for p in _VIMSHOPAKA_PLANETS
-        if p in snapshot.rasi_chart
-    ]
+    return [compute_vimshopaka(snapshot, p) for p in _VIMSHOPAKA_PLANETS]

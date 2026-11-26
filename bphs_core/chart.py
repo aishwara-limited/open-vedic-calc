@@ -282,7 +282,9 @@ class Chart:
             name = utils.PLANETS[pid]
             sign = utils.SIGNS[sign_idx]
             nakshatra = utils.longitude_to_nakshatra(sign_idx * 30 + deg)
-            dignity = utils.get_planet_dignity(name, sign)
+            # The rasi label honours the arcs of BPHS 3.49-54; the vargas
+            # (_build_varga_chart) are judged by sign.
+            dignity = utils.get_rasi_dignity(name, sign_idx * 30.0 + deg)
             # Never `pid in retro_planets` directly: that is the library's answer,
             # and the library omits both lunar nodes from planets_in_retrograde
             # entirely, so it reports the perpetually-retrograde shadow grahas as

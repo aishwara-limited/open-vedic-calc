@@ -73,19 +73,6 @@ _DEBILITATION_POINT: dict[str, float] = {
     "Jupiter": 275.0, "Venus": 177.0, "Saturn": 20.0,
 }
 
-# Moolatrikona arcs in the rasi chart, BPHS 3.51-54: (sign, from degree, to
-# degree). The Moon's is Taurus after her 3 degrees of exaltation; Mercury's
-# is the 5 degrees of Virgo after his 15 degrees of exaltation.
-_MOOLATRIKONA_ARC: dict[str, tuple[str, float, float]] = {
-    "Sun": ("Leo", 0.0, 20.0),
-    "Moon": ("Taurus", 3.0, 30.0),
-    "Mars": ("Aries", 0.0, 12.0),
-    "Mercury": ("Virgo", 15.0, 20.0),
-    "Jupiter": ("Sagittarius", 0.0, 10.0),
-    "Venus": ("Libra", 0.0, 15.0),
-    "Saturn": ("Aquarius", 0.0, 20.0),
-}
-
 # Saptavargaja bala, BPHS 27.2-4 (Santhanam): virupas per varga for the
 # graha's state there. The seven vargas are the rasi, hora, drekkana,
 # saptamsa, navamsa, dwadasamsa and trimsamsa.
@@ -383,10 +370,11 @@ def varga_state(planet: str, sign: str, rasi_longitude: float | None,
 
     Moolatrikona is judged by the degree arcs of BPHS 3.51-54 in the rasi
     chart (pass the rasi longitude) and by sign in every other varga (pass
-    None): BPHS 27.2-4 applies one scale to all seven vargas. Exaltation and
-    debilitation take no part here; uchcha bala carries them.
+    None): BPHS 27.2-4 applies one scale to all seven vargas. The arcs are
+    utils.MOOLATRIKONA_ARC, the table the served rasi dignity reads.
+    Exaltation and debilitation take no part here; uchcha bala carries them.
     """
-    mt_sign, mt_from, mt_to = _MOOLATRIKONA_ARC[planet]
+    mt_sign, mt_from, mt_to = utils.MOOLATRIKONA_ARC[planet]
     if sign == mt_sign and (
         rasi_longitude is None or mt_from <= rasi_longitude % 30.0 < mt_to
     ):
@@ -955,7 +943,15 @@ def compute_strength(
     return shadbala, bhavabala_table(inp, virupas)
 
 
-# Bhinnashtakavarga benefic places per BPHS chapter 66 (Parashara).
+# Bhinnashtakavarga benefic places per BPHS chapter 66 (Parashara), read
+# verse by verse; the Moon's rows are vv. 46-48 and Venus's vv. 56-58. Four
+# rows differ from the variant table that many printed tables and programs
+# carry (attributed to Varahamihira's Brihat Jataka ch. 9), which this module
+# served until it was checked against the verses: the Moon from the Moon (BPHS
+# adds the 9th), from Mars
+# (BPHS drops the 9th), from Jupiter (BPHS has the 2nd, not the 12th) and Venus
+# from Mars (BPHS has the 4th, not the 5th). The per-planet totals are the same
+# in both, so only a row-by-row check can tell them apart.
 # For each planet's own ashtakavarga, every reference point (the 7 planets plus
 # the Lagna) contributes a bindu to specific houses counted *from that reference
 # point*. A planet's BAV is the sum of bindus from all 8 reference points (0-8
@@ -974,10 +970,10 @@ _ASHTAKAVARGA_BENEFICS: dict[str, dict[str, list[int]]] = {
     },
     "Moon": {
         "Sun":     [3, 6, 7, 8, 10, 11],
-        "Moon":    [1, 3, 6, 7, 10, 11],
-        "Mars":    [2, 3, 5, 6, 9, 10, 11],
+        "Moon":    [1, 3, 6, 7, 9, 10, 11],
+        "Mars":    [2, 3, 5, 6, 10, 11],
         "Mercury": [1, 3, 4, 5, 7, 8, 10, 11],
-        "Jupiter": [1, 4, 7, 8, 10, 11, 12],
+        "Jupiter": [1, 2, 4, 7, 8, 10, 11],
         "Venus":   [3, 4, 5, 7, 9, 10, 11],
         "Saturn":  [3, 5, 6, 11],
         "Lagna":   [3, 6, 10, 11],
@@ -1015,7 +1011,7 @@ _ASHTAKAVARGA_BENEFICS: dict[str, dict[str, list[int]]] = {
     "Venus": {
         "Sun":     [8, 11, 12],
         "Moon":    [1, 2, 3, 4, 5, 8, 9, 11, 12],
-        "Mars":    [3, 5, 6, 9, 11, 12],
+        "Mars":    [3, 4, 6, 9, 11, 12],
         "Mercury": [3, 5, 6, 9, 11],
         "Jupiter": [5, 8, 9, 10, 11],
         "Venus":   [1, 2, 3, 4, 5, 8, 9, 10, 11],

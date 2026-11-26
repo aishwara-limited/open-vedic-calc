@@ -49,7 +49,7 @@ def _mock_chart(planets: dict[str, dict], lagna: str = "Aries",
 
 
 # Planet placements taken from a verified reference chart (synthetic here — just
-# signs, no birth data). These reproduce the reference Ashtakavarga exactly.
+# signs, no birth data).
 _REF_PLACEMENTS = {
     "Sun":     {"sign": "Cancer"},
     "Moon":    {"sign": "Cancer"},
@@ -61,17 +61,24 @@ _REF_PLACEMENTS = {
 }
 _REF_LAGNA = "Aquarius"
 
-# Reference Ashtakavarga (bindus per sign, Aries..Pisces).
+# Reference Ashtakavarga (bindus per sign, Aries..Pisces), by the BPHS ch. 66
+# table. The reference first recorded here came from a calculator carrying the
+# variant table (attributed to Brihat Jataka ch. 9) in four rows. The Moon and
+# Venus rows and the SAV were re-derived from the placements above by hand
+# against the BPHS rows typed in tests/test_strength_dignity_bphs.py (_BPHS_66),
+# both from scratch and as the change from the old reference: the Moon gains
+# Virgo and Pisces and loses Taurus and Cancer, Venus gains Sagittarius and
+# loses Capricorn; the other five rows are the same in both tables.
 _REF_BINNA = {
     "Sun":     [7, 7, 4, 4, 1, 4, 3, 3, 7, 3, 1, 4],
-    "Moon":    [5, 5, 2, 6, 2, 4, 3, 5, 4, 5, 6, 2],
+    "Moon":    [5, 4, 2, 5, 2, 5, 3, 5, 4, 5, 6, 3],
     "Mars":    [5, 6, 3, 4, 0, 5, 1, 4, 6, 2, 1, 2],
     "Mercury": [5, 6, 6, 6, 2, 5, 4, 3, 6, 2, 3, 6],
     "Jupiter": [4, 5, 3, 5, 6, 3, 6, 6, 3, 3, 5, 7],
-    "Venus":   [4, 7, 6, 4, 3, 4, 3, 4, 4, 3, 5, 5],
+    "Venus":   [4, 7, 6, 4, 3, 4, 3, 4, 5, 2, 5, 5],
     "Saturn":  [4, 5, 3, 5, 2, 1, 1, 4, 4, 4, 5, 1],
 }
-_REF_SAV = [34, 41, 27, 34, 16, 26, 21, 29, 34, 22, 26, 27]
+_REF_SAV = [34, 40, 27, 33, 16, 27, 21, 29, 35, 21, 26, 28]
 _BAV_TOTALS = {"Sun": 48, "Moon": 49, "Mars": 39, "Mercury": 54,
                "Jupiter": 56, "Venus": 52, "Saturn": 39}
 

@@ -522,7 +522,9 @@ def _score_instant(
         lord_lon = utils.graha_sidereal_longitude(jd, lagna_lord)
         lord_sign_idx = int(lord_lon // 30) % 12
         lord_house = (lord_sign_idx - lagna_sign_idx) % 12 + 1
-        lord_dignity = utils.get_planet_dignity(lagna_lord, utils.SIGNS[lord_sign_idx])
+        # The lord's rasi dignity, by the arcs of BPHS 3.49-54 -- the label
+        # /v1/chart serves for the same longitude.
+        lord_dignity = utils.get_rasi_dignity(lagna_lord, lord_lon)
 
     # Malefics in lagna sign at this instant — same no-swallow rule as above.
     malefics_in_lagna = 0
