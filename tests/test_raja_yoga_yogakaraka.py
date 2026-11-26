@@ -5,7 +5,8 @@ sloka numbers in the standard Sanskrit numbering)
 ---------------------------------------------------------------------------
 * 34.11-12: the lord of a kendra and the lord of a kona form a yoga when they
   exchange houses, sit together in one sign, one sits in the other's sign, or
-  they aspect each other fully.
+  they aspect each other fully. That pair rule, with the blemish of 34.15, is
+  pinned for all twelve ascendants by tests/test_raja_yoga_pair_rule.py.
 * 34.13: when ONE graha holds the lordship of a kona and of a kendra, it is a
   yogakaraka in its own right.
 * 34.3: the lagna is at once a kendra and a kona, which is why the lagna itself
@@ -279,11 +280,29 @@ def test_the_lagna_lord_joining_a_kona_lord_is_still_a_raja_yoga():
     assert raja[0].houses_involved == [9]
 
 
-def test_the_same_pair_apart_makes_no_raja_yoga():
+def test_the_same_pair_unrelated_makes_no_raja_yoga():
+    """Virgo rising, Mercury in Leo (12th, the Sun's) and Venus in Cancer
+    (11th, the Moon's): adjacent signs, which neither aspects, and neither in
+    the other's sign -- none of the relations of 34.11-12."""
+    yogas = detect_raja_yogas(
+        _snapshot("Virgo", {"Mercury": ("Leo", 12), "Venus": ("Cancer", 11)})
+    )
+    assert [y for y in yogas if y.name == "Raja Yoga"] == []
+
+
+def test_the_same_pair_exchanging_signs_is_a_raja_yoga():
+    """Virgo rising, Mercury in Taurus (9th, Venus's) and Venus in Gemini
+    (10th, Mercury's): an exchange of signs, one of the relations of
+    34.11-12. Only the two-in-one-sign relation used to be detected, and this
+    exchange was served as no yoga."""
     yogas = detect_raja_yogas(
         _snapshot("Virgo", {"Mercury": ("Taurus", 9), "Venus": ("Gemini", 10)})
     )
-    assert [y for y in yogas if y.name == "Raja Yoga"] == []
+    raja = [y for y in yogas if y.name == "Raja Yoga"]
+    assert len(raja) == 1
+    assert sorted(raja[0].planets_involved) == ["Mercury", "Venus"]
+    assert raja[0].houses_involved == [9, 10]
+    assert "exchange signs" in raja[0].description
 
 
 # ---------------------------------------------------------------------------
