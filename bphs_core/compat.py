@@ -449,7 +449,22 @@ class MangalDoshaInfo:
 
 
 def _mangal_dosha_raw(snapshot: ChartSnapshot) -> tuple[bool, str, list[str]]:
-    """Returns (has_dosha, severity, cancellation_reasons)."""
+    """Returns (has_dosha, severity, cancellation_reasons).
+
+    What is served, counted in whole-sign houses from the lagna:
+
+    * the dosha is present when Mars is in the 1st, 2nd, 4th, 7th, 8th or
+      12th house; severity is "strong" in the 8th or 12th, "mild" otherwise;
+    * cancellation reasons are collected in this order, and callers serve
+      only the first: Mars in Aries, Scorpio or Capricorn; Jupiter joining
+      Mars (same sign) or Jupiter aspecting Mars; a lagna or Moon sign of
+      Aries or Scorpio; Mars in the 2nd house in Gemini or Virgo.
+
+    The house set, the severity grade and the list of cancellations are this
+    engine's existing choices and carry no verse citation here. What IS
+    cited is the direction of the Jupiter aspect, which follows the graha
+    drishti rule of BPHS ch. 26, vv. 2-5.
+    """
     mars = snapshot.rasi_chart.get("Mars")
     if mars is None:
         return False, "none", []
@@ -462,7 +477,14 @@ def _mangal_dosha_raw(snapshot: ChartSnapshot) -> tuple[bool, str, list[str]]:
     reasons: list[str] = []
     if mars.sign in ("Aries", "Scorpio", "Capricorn"):
         reasons.append(f"Mars in {mars.sign} (own sign or exalted) cancels the dosha.")
-    if "Jupiter" in mars.conjunctions or "Jupiter" in mars.aspects:
+    # The influence must run FROM Jupiter TO Mars. PlanetData.aspects lists the
+    # grahas a planet aspects (chart._find_aspects), so the test reads
+    # Jupiter's list: Mars must fall in the 5th, 7th or 9th house counted from
+    # Jupiter (BPHS ch. 26 Graha Drishti, vv. 2-5: every graha fully aspects
+    # the 7th from itself, Jupiter also the 5th and 9th). Mars's own list
+    # holds the grahas MARS aspects (his 4th, 7th, 8th) and is not read here.
+    jupiter = snapshot.rasi_chart.get("Jupiter")
+    if "Jupiter" in mars.conjunctions or (jupiter is not None and "Mars" in jupiter.aspects):
         reasons.append("Jupiter's influence on Mars cancels the Mangal Dosha.")
     moon = snapshot.rasi_chart.get("Moon")
     if snapshot.lagna in ("Aries", "Scorpio") or (moon and moon.sign in ("Aries", "Scorpio")):
