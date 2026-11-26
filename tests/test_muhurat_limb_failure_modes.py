@@ -60,16 +60,19 @@ def _raise(*_a, **_k):
 
 
 # Several ``drik`` entry points call one another INTERNALLY — re-measured on the
-# pinned pyjhora 4.8.7: the body of ``drik.karana`` calls ``drik.tithi``, and the
-# body of ``drik.varjyam`` calls ``drik.nakshatra``. The relationship is unchanged
+# pinned pyjhora 4.8.7: the body of ``drik.karana`` calls ``drik.tithi``. (The
+# body of ``drik.varjyam`` calls ``drik.nakshatra``, but this module calls
+# neither any more: the nakshatra span, the Varjyam and Amrita windows and every
+# panchanga end time are solved from the ephemeris here, and their failure
+# modes are pinned by TestSolvedLimbsFailClosed below.) The relationship is unchanged
 # from 4.8.6. It is recorded as a caller/callee pair rather than as a location in
 # the vendored file, because on that bump the relationship held while the
 # locations moved — so the pair is what survives a bump, and the pair is what is
 # re-read on the next one. A permanently
 # patched function therefore does not simulate "this limb failed"; it simulates
 # "the library is broken", and the failure surfaces on a DIFFERENT limb than the
-# one under test (patching ``nakshatra`` to raise forever fails ``varjyam``,
-# which raises, so the nakshatra-end degradation is never reached).
+# one under test (patching ``karana``'s internal ``tithi`` to raise forever
+# fails the tithi NAME, which raises, before the karana is reached).
 #
 # ``compute_muhurat_for_day`` calls each limb exactly once, in the order the
 # module documents, so sabotaging only the FIRST call targets precisely the limb
@@ -105,6 +108,19 @@ def _patch_first_failure(monkeypatch, attr):
     monkeypatch.setattr(m.drik, attr, _fail_first(getattr(m.drik, attr)))
 
 
+def _fail_nth(real, n):
+    """Raise on the *n*-th call (1-based), delegate to *real* otherwise."""
+    calls = {"n": 0}
+
+    def wrapped(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == n:
+            raise RuntimeError("ephemeris unavailable")
+        return real(*a, **k)
+
+    return wrapped
+
+
 RAISE = "raise"
 DEGRADE = "degrade"
 
@@ -135,7 +151,6 @@ LIMB_CLASSIFICATION: dict[str, tuple[str, str]] = {
     "gulikai_kaalam": (RAISE, "gulikai_kaalam"),
     # --- per-activity vetoes: a dropped window silently clears the veto ---
     "durmuhurtam": (RAISE, "durmuhurtam"),
-    "varjyam": (RAISE, "varjyam"),
     "panchaka_rahitha": (RAISE, "panchaka"),
     "next_solar_eclipse": (RAISE, "eclipse"),
     "next_lunar_eclipse": (RAISE, "eclipse"),
@@ -143,11 +158,18 @@ LIMB_CLASSIFICATION: dict[str, tuple[str, str]] = {
     # --- supplementary: zero reads in the scan pipeline ---
     "moonrise": (DEGRADE, "moonrise"),
     "moonset": (DEGRADE, "moonset"),
-    "nakshatra": (DEGRADE, "panchanga.nakshatra_end"),
-    "yogam": (DEGRADE, "panchanga.yogam_end"),
-    "amrita_gadiya": (DEGRADE, "amrita_periods"),
     "muhurthas": (DEGRADE, "all_muhurtas"),
 }
+
+# The limbs this module SOLVES from the ephemeris rather than reading from
+# ``drik`` (so the AST sweep above cannot see them). ``compute_muhurat_for_day``
+# calls ``_limb_end_hours`` once per panchanga end time, in this order, and
+# ``nakshatra_span`` once, for the Varjyam (and the Amrita window cut from the
+# same span).
+SOLVED_END_TIMES = (
+    "panchanga.tithi_end", "panchanga.nakshatra_end",
+    "panchanga.yogam_end", "panchanga.karana_end",
+)
 
 # ``drik`` attributes the module touches that are not limb computations: the
 # Place type used in annotations and the ayanamsa setter. Asserted to be present
@@ -227,6 +249,36 @@ class TestEveryDrikLimbIsClassified:
         )
 
 
+class TestSolvedLimbsFailClosed:
+    """The limbs solved from the ephemeris carry the same classification as
+    the ``drik`` limbs they replaced: the Varjyam veto RAISES, each panchanga
+    end time DEGRADES naming itself."""
+
+    def test_the_nakshatra_span_raises_as_the_varjyam_limb(self, monkeypatch):
+        monkeypatch.setattr(m, "nakshatra_span", _fail_first(m.nakshatra_span))
+        with pytest.raises(m.MuhurtaLimbError) as exc:
+            m.compute_muhurat_for_day(PLACE, TARGET)
+        assert exc.value.limb == "varjyam"
+        assert isinstance(exc.value.__cause__, RuntimeError)
+
+    @pytest.mark.parametrize("n", range(1, len(SOLVED_END_TIMES) + 1))
+    def test_each_solved_end_time_degrades_naming_itself(self, monkeypatch, n):
+        monkeypatch.setattr(m, "_limb_end_hours", _fail_nth(m._limb_end_hours, n))
+        out = m.compute_muhurat_for_day(PLACE, TARGET)
+        token = SOLVED_END_TIMES[n - 1]
+        assert out["degraded_limbs"] == [token]
+        assert out["panchanga"][token.split(".")[1]] is None
+        # The names are untouched.
+        for name in ("tithi", "nakshatra", "yogam", "karana"):
+            assert out["panchanga"][name]
+
+    def test_an_unsolvable_bracket_raises_rather_than_guessing(self):
+        """A bracket that does not hold the crossing is refused, never bisected
+        into a plausible-looking instant."""
+        with pytest.raises(ValueError, match="no crossing"):
+            m._solve_crossing(lambda jd: 10.0, 20.0, 2461000.0, 2461001.0)
+
+
 # ---------------------------------------------------------------------------
 # The day frame
 # ---------------------------------------------------------------------------
@@ -299,15 +351,15 @@ class TestValueAndEndTimeAreClassifiedSeparately:
     """
 
     def test_tithi_end_alone_degrades(self, monkeypatch):
-        # A well-formed index with an unusable end field: the NAME survives.
-        monkeypatch.setattr(m.drik, "tithi", _stub_first(m.drik.tithi, (5, 0.0, None)))
+        # The end cannot be solved: the NAME survives.
+        monkeypatch.setattr(m, "_limb_end_hours", _fail_nth(m._limb_end_hours, 1))
         out = m.compute_muhurat_for_day(PLACE, TARGET)
         assert out["panchanga"]["tithi"] is not None
         assert out["panchanga"]["tithi_end"] is None
         assert "panchanga.tithi_end" in out["degraded_limbs"]
 
     def test_karana_end_alone_degrades(self, monkeypatch):
-        monkeypatch.setattr(m.drik, "karana", _stub_first(m.drik.karana, (3, 0.0, None)))
+        monkeypatch.setattr(m, "_limb_end_hours", _fail_nth(m._limb_end_hours, 4))
         out = m.compute_muhurat_for_day(PLACE, TARGET)
         assert out["panchanga"]["karana"] is not None
         assert out["panchanga"]["karana_end"] is None
@@ -321,10 +373,10 @@ class TestValueAndEndTimeAreClassifiedSeparately:
         assert exc.value.limb == "tithi"
 
     def test_nakshatra_name_survives_an_end_time_failure(self, monkeypatch):
-        """The nakshatra/yoga NAMES come from the longitudes, not from drik, so
-        only their end-times can degrade."""
-        _patch_first_failure(monkeypatch, "nakshatra")
-        _patch_first_failure(monkeypatch, "yogam")
+        """The nakshatra/yoga NAMES come from the longitudes, and their end
+        times are solved separately, so only the end-times can degrade."""
+        real = m._limb_end_hours
+        monkeypatch.setattr(m, "_limb_end_hours", _fail_nth(_fail_nth(real, 2), 3))
         out = m.compute_muhurat_for_day(PLACE, TARGET)
         assert out["panchanga"]["nakshatra"] in utils.NAKSHATRAS
         assert out["panchanga"]["yogam"] in m.YOGAS
@@ -381,6 +433,13 @@ class TestDegradedFlagIsDerived:
         _patch_first_failure(monkeypatch, attr)
         out = m.compute_muhurat_for_day(PLACE, TARGET)
         assert out["degraded"] == bool(out["degraded_limbs"])
+
+    @pytest.mark.parametrize("n", range(1, len(SOLVED_END_TIMES) + 1))
+    def test_flag_equals_list_emptiness_for_a_solved_end(self, monkeypatch, n):
+        monkeypatch.setattr(m, "_limb_end_hours", _fail_nth(m._limb_end_hours, n))
+        out = m.compute_muhurat_for_day(PLACE, TARGET)
+        assert out["degraded"] is True
+        assert out["degraded_limbs"] == [SOLVED_END_TIMES[n - 1]]
 
     def test_limbs_are_reported_once_each(self, monkeypatch):
         _patch_first_failure(monkeypatch, "moonrise")

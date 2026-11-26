@@ -122,16 +122,17 @@ class TestTithiFailClosed:
     def test_a_failed_end_time_alone_still_only_degrades(self, monkeypatch):
         """The refinement half of the same call is NOT recommendation-affecting:
         the four panchanga end-times have zero reads in the scan pipeline."""
-        real = m.drik.tithi
+        real = m._limb_end_hours
         calls = {"n": 0}
 
         def _bad_end(*a, **k):
             calls["n"] += 1
-            # drik.karana calls drik.tithi internally, so sabotage only the
-            # muhurat module's own (first) call.
-            return (5, 0.0, None) if calls["n"] == 1 else real(*a, **k)
+            # The tithi end is the first end time solved.
+            if calls["n"] == 1:
+                raise ValueError("unsolvable")
+            return real(*a, **k)
 
-        monkeypatch.setattr(m.drik, "tithi", _bad_end)
+        monkeypatch.setattr(m, "_limb_end_hours", _bad_end)
         out = m.compute_muhurat_for_day(PLACE, TARGET)
         assert out["panchanga"]["tithi"] is not None
         assert out["panchanga"]["tithi_end"] is None

@@ -59,7 +59,7 @@ def _day(**over) -> dict:
     d = {
         "date": "2026-12-16", "sunrise": "06:17",
         "auspicious_muhurtas": [], "chogadiya": [], "inauspicious_periods": [],
-        muhurat.VARJYAM_HOURS_KEY: (14.0, 15.5),
+        muhurat.VARJYAM_HOURS_KEY: ((14.0, 15.5),),
     }
     d.update(over)
     return d
@@ -120,7 +120,7 @@ def test_varjyam_is_placed_from_its_float_hours(hours, start):
     s = muhurat.float_hours_to_hhmm(hours[0])
     e = muhurat.float_hours_to_hhmm(hours[1])
     day = _day(inauspicious_periods=[{"start": s, "end": e, "label": "Varjyam"}],
-               **{muhurat.VARJYAM_HOURS_KEY: hours})
+               **{muhurat.VARJYAM_HOURS_KEY: (hours,)})
     [(got_s, got_e, _)] = _placed(day, "inauspicious_periods")
     assert got_s == start
     assert got_e - got_s == (ls._hhmm_to_mins(e) - ls._hhmm_to_mins(s)) % 1440
@@ -137,7 +137,7 @@ def test_a_zero_width_window_keeps_its_whole_day_reading():
     # The engine has always read start == end as the whole clock; for the
     # surgery Varjyam veto that is the fail-closed reading, and it is kept.
     day = _day(inauspicious_periods=[{"start": "13:38", "end": "13:38", "label": "Varjyam"}],
-               **{muhurat.VARJYAM_HOURS_KEY: (13.641, 13.641)})
+               **{muhurat.VARJYAM_HOURS_KEY: ((13.641, 13.641),)})
     assert _placed(day, "inauspicious_periods") == [(1440, 2880, "Varjyam")]
 
 
@@ -190,7 +190,7 @@ def _stub_days(monkeypatch, eclipse_on: dt.date | None = None,
             "auspicious_muhurtas": nishita,
             "chogadiya": choga, "inauspicious_periods": [],
             "is_eclipse_day": d == eclipse_on, "is_adhik_maasa": d == adhik_on,
-            muhurat.VARJYAM_HOURS_KEY: (14.0, 15.0),
+            muhurat.VARJYAM_HOURS_KEY: ((14.0, 15.0),),
         }
     monkeypatch.setattr(ls, "compute_muhurat_for_day", fake)
     return computed
@@ -380,7 +380,7 @@ def test_a_vaara_across_a_clock_change_is_read_on_its_own_dates_clock(monkeypatc
             "auspicious_muhurtas": [], "inauspicious_periods": [],
             "chogadiya": night if d == change - dt.timedelta(days=1) else [],
             "is_eclipse_day": False, "is_adhik_maasa": False,
-            muhurat.VARJYAM_HOURS_KEY: (14.0, 15.0),
+            muhurat.VARJYAM_HOURS_KEY: ((14.0, 15.0),),
         }
 
     monkeypatch.setattr(ls, "compute_muhurat_for_day", fake)

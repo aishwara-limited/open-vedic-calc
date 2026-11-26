@@ -701,8 +701,10 @@ def _place_day_windows(day_data: dict, midnight: int) -> dict[str, list[tuple[in
     * Varjyam is a slice of the nakshatra in force at noon, so it can fall on
       the previous evening or after the coming midnight; its date comes from
       the unrendered float hours compute_muhurat_for_day hands over under
-      ``VARJYAM_HOURS_KEY``. A day carrying a Varjyam window without them
-      cannot be placed, and raises.
+      ``VARJYAM_HOURS_KEY`` -- one ``(start, end)`` pair per Varjyam window, in
+      served order (a Mula day has two windows, and each is placed from its
+      own pair). A day whose Varjyam windows and pairs do not correspond one
+      to one cannot be placed, and raises.
     * Every other window lies between this day's sunrise and the next one --
       the day windows, Godhuli at sunset, and the night chogadiya, Nishita,
       night Vijaya and night Durmuhurtam -- so one that reads earlier than
@@ -710,13 +712,31 @@ def _place_day_windows(day_data: dict, midnight: int) -> dict[str, list[tuple[in
 
     A window whose start and end render to the same minute keeps the reading
     it has always had here: the whole civil day of the day that computed it.
-    (The library returns such a zero-width Varjyam on a few days a year; for
-    the surgery veto that reading fails closed, and it is not reinterpreted
-    here.)
+    (For the surgery veto that reading fails closed. A solved Varjyam lasts
+    four ghatis of its star, close to an hour or more, so the engine no longer
+    produces such a window; the reading is kept for any payload that carries
+    one.)
 
     Returns, per window list, ``(start, end, window)`` with ``end > start``.
     """
     sunrise = _hhmm_to_mins(day_data["sunrise"])
+    varjyam_windows = [
+        w for w in day_data.get("inauspicious_periods", [])
+        if w.get("label") == _VARJYAM_LABEL
+    ]
+    varjyam_hours = day_data.get(VARJYAM_HOURS_KEY)
+    if varjyam_windows and (
+        varjyam_hours is None or len(varjyam_hours) != len(varjyam_windows)
+    ):
+        raise ValueError(
+            f"the {len(varjyam_windows)} Varjyam window(s) of "
+            f"{day_data.get('date')} carry "
+            f"{0 if varjyam_hours is None else len(varjyam_hours)} float "
+            "placement(s), so the date each falls on is unknown"
+        )
+    varjyam_pair = {
+        id(w): pair for w, pair in zip(varjyam_windows, varjyam_hours or ())
+    }
     placed: dict[str, list[tuple[int, int, dict]]] = {}
     for key in _WINDOW_LISTS:
         out = []
@@ -729,12 +749,7 @@ def _place_day_windows(day_data: dict, midnight: int) -> dict[str, list[tuple[in
             if label == _BRAHMA_LABEL:
                 start = s if s < sunrise else s - _DAY_MINS
             elif label == _VARJYAM_LABEL:
-                hours = day_data.get(VARJYAM_HOURS_KEY)
-                if hours is None:
-                    raise ValueError(
-                        f"the Varjyam window of {day_data.get('date')} carries no "
-                        "float placement, so the date it falls on is unknown"
-                    )
+                hours = varjyam_pair[id(w)]
                 start = s + _DAY_MINS * round((hours[0] * 60.0 - s) / _DAY_MINS)
             else:
                 start = s if s >= sunrise else s + _DAY_MINS

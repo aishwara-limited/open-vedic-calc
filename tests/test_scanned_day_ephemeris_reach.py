@@ -21,6 +21,13 @@ year, x 6 timezone corners), recording the furthest Julian Day its
       / panchaka_rahitha                       +2.543 d          -1.398 d
     drik.tithi / karana                        +1.998 d          -0.083 d
 
+``drik.yogam``, ``drik.nakshatra``, ``drik.varjyam`` and ``drik.amrita_gadiya``
+are no longer called: the four panchanga end times and the nakshatra span
+behind Varjyam and Amrita Gadiya are solved by bisection
+(``bphs_core.muhurat._solve_crossing``), whose brackets were measured reaching
+-1.283 d / +2.2 d over latitudes -66..66 x four timezone corners x 13 dates --
+inside the rows above. The forward ceiling is still ``lunar_month``'s.
+
 Re-measured at the LOW edge (scanned days 1800-01-02..1806-07-30, 8 timezone
 corners), driving ``compute_muhurat_for_day`` whole, the forward ceiling is
 unchanged: **+31.835 d**, at 1800-01-25 and again at 1804-02-11. The forward

@@ -78,6 +78,11 @@ MAX_EPHEMERIS_DATE = date(2400, 1, 9)
 #       / panchaka_rahitha                     +2.543 d       -1.398 d
 #     drik.tithi / karana                      +1.998 d       -0.083 d
 #
+# drik.yogam, drik.nakshatra, drik.varjyam and drik.amrita_gadiya are no longer
+# called: the panchanga end times and the nakshatra span behind Varjyam and
+# Amrita Gadiya are solved by bisection (bphs_core.muhurat._solve_crossing),
+# measured reaching -1.283 d / +2.2 d -- inside the rows above.
+#
 # Re-measured at the edges, driving compute_muhurat_for_day whole across 8
 # timezone corners, the forward ceiling holds: +31.835 d over scanned days
 # 1800-01-02..1806-07-30, and +31.815 d over 2398-12-01..2399-12-01. The forward

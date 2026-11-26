@@ -373,7 +373,6 @@ class TestInauspiciousFallbacks:
         ("yamaganda_kaalam", "yamaganda_kaalam"),
         ("gulikai_kaalam", "gulikai_kaalam"),
         ("durmuhurtam", "durmuhurtam"),
-        ("varjyam", "varjyam"),
     ])
     def test_single_inauspicious_failure_raises(self, monkeypatch, fn, limb):
         """All five reach the scorer as a WINDOW it matches labels against, so a
@@ -417,14 +416,22 @@ class TestInauspiciousFallbacks:
         assert "Durmuhurtam Period 2" in labels
 
 
-class TestAmritaFallback:
-    def test_amrita_failure(self, monkeypatch):
-        """Display-only (zero reads in the scan pipeline), so it degrades — and
-        says so."""
-        monkeypatch.setattr(m.drik, "amrita_gadiya", _raise)
+    def test_varjyam_failure_raises(self, monkeypatch):
+        """The Varjyam windows are cut from the solved nakshatra span; a span
+        that cannot be solved is a veto that cannot be verified, so it raises."""
+        monkeypatch.setattr(m, "nakshatra_span", _raise)
+        with pytest.raises(m.MuhurtaLimbError) as exc:
+            m.compute_muhurat_for_day(PLACE, TARGET)
+        assert exc.value.limb == "varjyam"
+
+
+class TestAmritaFollowsTheVarjyamSpan:
+    def test_amrita_is_cut_from_the_same_star_as_the_varjyam(self):
+        """Display-only, and cut from the span the Varjyam veto already
+        solved: one window, never a degraded limb of its own."""
         out = m.compute_muhurat_for_day(PLACE, TARGET)
-        assert out["amrita_periods"] == []
-        assert "amrita_periods" in out["degraded_limbs"]
+        assert [w["label"] for w in out["amrita_periods"]] == ["Amrita Gadiya"]
+        assert "amrita_periods" not in out["degraded_limbs"]
 
 
 class TestPanchakaFallback:
@@ -867,25 +874,25 @@ class TestDegradedFlag:
 # ---------------------------------------------------------------------------
 # Root-cause: nakshatra/yoga NAME comes from the sidereal longitudes directly,
 # so a corrupt pyjhora index never wraps a wrong name — a valid name is always
-# produced. The corrupt index only invalidates the end-time → day is degraded.
+# produced. Their end times are solved separately; an unsolvable end only
+# invalidates the end-time → day is degraded.
 # ---------------------------------------------------------------------------
 
 class TestNakshatraYogaIndexGuard:
-    def test_nakshatra_index_zero_still_names_via_longitude(self, monkeypatch):
-        """A corrupt pyjhora index (0) does NOT corrupt the name (computed from
-        the Moon's longitude); only the end-time is lost and the day degrades."""
-        real_nakshatra = m.drik.nakshatra
+    def test_nakshatra_end_failure_still_names_via_longitude(self, monkeypatch):
+        """An end time that cannot be solved does NOT touch the name (computed
+        from the Moon's longitude); only the end-time is lost and the day
+        degrades."""
+        real = m._limb_end_hours
 
-        def fake_nakshatra(jd, place):
-            result = real_nakshatra(jd, place)
-            # Return the same tuple structure but with the index forced to 0
-            return (0,) + tuple(result[1:])
+        def fail_nakshatra(angle_at, *a, **k):
+            if angle_at is m._moon_longitude:
+                raise ValueError("unsolvable")
+            return real(angle_at, *a, **k)
 
-        monkeypatch.setattr(m.drik, "nakshatra", fake_nakshatra)
+        monkeypatch.setattr(m, "_limb_end_hours", fail_nakshatra)
         out = m.compute_muhurat_for_day(PLACE, TARGET)
-        # Name is still a VALID nakshatra (from the direct longitude computation).
         assert out["panchanga"]["nakshatra"] in utils.NAKSHATRAS
-        # The out-of-range pyjhora index makes the end-time unavailable -> degraded.
         assert out["panchanga"]["nakshatra_end"] is None
         assert out["degraded"] is True
 
@@ -894,16 +901,17 @@ class TestNakshatraYogaIndexGuard:
         out = m.compute_muhurat_for_day(PLACE, TARGET)
         assert out["panchanga"]["nakshatra"] in utils.NAKSHATRAS
 
-    def test_yoga_index_zero_still_names_via_longitude(self, monkeypatch):
-        """A corrupt pyjhora yoga index (0) does NOT corrupt the name (computed
-        from the Sun+Moon longitude sum); only the end-time is lost -> degraded."""
-        real_yogam = m.drik.yogam
+    def test_yoga_end_failure_still_names_via_longitude(self, monkeypatch):
+        """An unsolvable yoga end does NOT touch the name (computed from the
+        Sun+Moon longitude sum); only the end-time is lost -> degraded."""
+        real = m._limb_end_hours
 
-        def fake_yogam(jd, place):
-            result = real_yogam(jd, place)
-            return (0,) + tuple(result[1:])
+        def fail_yoga(angle_at, *a, **k):
+            if angle_at is m._sun_moon_sum:
+                raise ValueError("unsolvable")
+            return real(angle_at, *a, **k)
 
-        monkeypatch.setattr(m.drik, "yogam", fake_yogam)
+        monkeypatch.setattr(m, "_limb_end_hours", fail_yoga)
         out = m.compute_muhurat_for_day(PLACE, TARGET)
         assert out["panchanga"]["yogam"] in m.YOGAS
         assert out["panchanga"]["yogam_end"] is None
