@@ -43,8 +43,11 @@ logger = logging.getLogger(__name__)
 #     but a wrong answer.
 #
 # Limbs with ZERO reads anywhere in that pipeline — moonrise, moonset, the four
-# panchanga end-times, the amrita windows, the 30-muhurta display table and the
-# personal-balam strings — are the ones that may degrade. They still degrade
+# panchanga end-times, the 30-muhurta display table and the personal-balam
+# strings — are the ones that may degrade. (The Amrita Gadiya window is
+# display-only too, but it is cut from the same nakshatra span the Varjyam veto
+# solves, so it has no failure of its own: if that span cannot be solved, the
+# Varjyam limb has already raised.) They still degrade
 # VISIBLY: the served field falls back to its documented sentinel and the limb
 # names itself in ``degraded_limbs``, from which the summary ``degraded`` flag
 # is derived, so the flag and the list cannot disagree.
@@ -155,10 +158,11 @@ def _event_hours(raw: object) -> float:
 
 
 # The internal (never served) key under which compute_muhurat_for_day hands the
-# electional scan the Varjyam window's float hours from local midnight. Every
-# other window the scan reads has a placement fixed by its definition (see
-# lagna_shuddhi._place_day_windows); Varjyam's is not, because it is a slice of
-# a nakshatra rather than of the day.
+# electional scan the float hours from local midnight of each Varjyam window it
+# serves: a tuple of ``(start, end)`` pairs, one per window and in served order
+# (two on a Mula day). Every other window the scan reads has a placement fixed
+# by its definition (see lagna_shuddhi._place_day_windows); Varjyam's is not,
+# because it is a slice of a nakshatra rather than of the day.
 VARJYAM_HOURS_KEY = "_varjyam_hours"
 
 # Named on the day-frame errors so a polar request is diagnosable from the
@@ -421,6 +425,172 @@ def panchanga_at_instant(jd_utc: float) -> InstantPanchanga:
     )
 
 
+# ---------------------------------------------------------------------------
+# Limb boundaries, solved from the ephemeris
+#
+# A panchanga limb begins and ends at the instant a longitude, or the sum or
+# difference of two, reaches a multiple of its part (Surya Siddhanta ch. II,
+# vv. 64-69, Burgess 1860): the Moon's sidereal longitude in parts of
+# 13 deg 20 min for the nakshatra, the Moon-Sun elongation in parts of 12 and 6
+# degrees for the tithi and the karana, and the sidereal Sun+Moon sum in parts
+# of 13 deg 20 min for the yoga. Each of those quantities only ever increases
+# (the Moon always outruns the Sun), so each boundary is found here by
+# bisection on the engine's own longitudes.
+#
+# The library this module otherwise reads does not solve for them. Its end
+# times project the boundary from the day's speeds -- measured against the
+# bisection at Colombo over 200 days of 2026: the tithi end up to 17.9 minutes
+# off and more than 5 minutes off on a third of days, the yoga end up to 17.4 --
+# and its nakshatra START turns a previous-day end time h into -h instead of
+# h - 24, which misplaced the Varjyam and Amrita Gadiya built on it by more
+# than an hour on more than half of all days (Colombo, 2026: the Varjyam start
+# on 198 of 365 days, the Amrita start on 174).
+# ---------------------------------------------------------------------------
+
+# The bisection stops when its bracket is narrower than this (about 9 ms).
+_BOUNDARY_TOLERANCE_DAYS = 1e-7
+
+# How far from its reference instant a limb's boundary is searched for. The
+# longest limb is a nakshatra at the Moon's slowest (13 deg 20 min at about
+# 11.8 deg a day: 1.13 days); a tithi lasts at most about 1.12 days and a yoga
+# about 1.05. 1.2 days therefore always holds the start of the limb in force
+# (looking back) or its end (looking forward), and keeps every read inside the
+# out-of-day reach the scanned-date bounds were measured against.
+_LIMB_SEARCH_DAYS = 1.2
+
+# The end of a sunrise limb is searched from this long BEFORE sunrise. The
+# tithi and karana NAMES come from the library at sunrise, and its karana is
+# chosen from a projected tithi midpoint, so the named limb can have ended a
+# few minutes before sunrise; six hours covers that with a wide margin.
+_END_SEARCH_BEFORE_DAYS = 0.25
+
+
+def _moon_longitude(jd_utc: float) -> float:
+    return utils.graha_sidereal_longitude(jd_utc, "Moon")
+
+
+def _elongation(jd_utc: float) -> float:
+    """Moon minus Sun, in [0, 360): the tithi and karana quantity."""
+    return (utils.graha_sidereal_longitude(jd_utc, "Moon")
+            - utils.graha_sidereal_longitude(jd_utc, "Sun")) % 360.0
+
+
+def _sun_moon_sum(jd_utc: float) -> float:
+    """Sidereal Sun plus Moon, in [0, 360): the yoga quantity."""
+    return (utils.graha_sidereal_longitude(jd_utc, "Sun")
+            + utils.graha_sidereal_longitude(jd_utc, "Moon")) % 360.0
+
+
+@utils.serialized_ephemeris
+def _solve_crossing(angle_at, target_deg: float, jd_lo: float, jd_hi: float) -> float:
+    """The UTC Julian Day in [*jd_lo*, *jd_hi*] at which *angle_at* -- an angle
+    that only increases -- reaches *target_deg* (mod 360).
+
+    RAISES ValueError when the bracket does not hold that crossing: a boundary
+    that could not be found must not be served as one that was.
+    """
+    def side(jd: float) -> float:
+        return (angle_at(jd) - target_deg + 180.0) % 360.0 - 180.0
+
+    if not side(jd_lo) < 0.0 <= side(jd_hi):
+        raise ValueError(
+            f"no crossing of {target_deg:.6f} deg between JD {jd_lo} and {jd_hi}"
+        )
+    while jd_hi - jd_lo > _BOUNDARY_TOLERANCE_DAYS:
+        mid = 0.5 * (jd_lo + jd_hi)
+        if side(mid) < 0.0:
+            jd_lo = mid
+        else:
+            jd_hi = mid
+    return jd_hi
+
+
+def _limb_end_hours(angle_at, part_deg: float, index: int,
+                    jd_rise_utc: float, midnight_utc: float) -> float:
+    """Hours after local midnight at which limb *index* ends.
+
+    *index* is 1-based: limb n spans ``(n - 1) * part_deg`` to
+    ``n * part_deg`` of *angle_at*, so it ends when the angle reaches
+    ``n * part_deg``. Searched for around sunrise, because the limbs this
+    serves are the ones in force at sunrise; the result exceeds 24 when the
+    limb ends after the coming midnight.
+    """
+    jd_end = _solve_crossing(
+        angle_at, (index * part_deg) % 360.0,
+        jd_rise_utc - _END_SEARCH_BEFORE_DAYS, jd_rise_utc + _LIMB_SEARCH_DAYS,
+    )
+    return (jd_end - midnight_utc) * 24.0
+
+
+@utils.serialized_ephemeris
+def nakshatra_span(jd_utc: float) -> tuple[int, float, float]:
+    """``(star, entry, exit)`` for the nakshatra the Moon occupies at the UTC
+    Julian Day *jd_utc*: the 1-based star, and the UTC Julian Days at which
+    the Moon's sidereal longitude enters and leaves its 13 deg 20 min.
+    """
+    idx = int((_moon_longitude(jd_utc) % 360.0) / _NAK_SPAN) % 27
+    entry = _solve_crossing(
+        _moon_longitude, idx * _NAK_SPAN, jd_utc - _LIMB_SEARCH_DAYS, jd_utc,
+    )
+    leave = _solve_crossing(
+        _moon_longitude, ((idx + 1) * _NAK_SPAN) % 360.0,
+        jd_utc, jd_utc + _LIMB_SEARCH_DAYS,
+    )
+    return idx + 1, entry, leave
+
+
+# Varjyam (tyajya, "to be abandoned"; the vishaghati of north-Indian
+# panchangas) and Amrita Gadiya are slices of the NAKSHATRA, not of the day.
+# The star is counted as STAR_GHATIS ghatis however long it actually lasts;
+# each window opens after the number of ghatis tabled for the star and lasts
+# WINDOW_GHATIS of them, both scaled to the star's actual length.
+#
+# The rule is a muhurta-literature rule, not a BPHS one, so the standard is the
+# tables in common professional use, named here:
+#
+# * VARJYAM_GHATIS -- the tyajya table of Karanam Ramakumar, "Panchangam
+#   Calculations". For 26 of the 27 stars it is identical to the table Drik
+#   Panchang publishes ("Nakshatra Thyajyam", which lists each window as ghatis
+#   N+1 to N+4, i.e. opening after N). The two differ on Mula only: Ramakumar
+#   gives two windows, after 20 and after 56 ghatis; Drik Panchang lists the
+#   second alone. Both Mula windows are served, and both veto (decision of
+#   2026-11-26).
+# * AMRITA_GHATIS -- the amrita table of the same Ramakumar reference.
+#
+# These are the tables the library this module used to read carries
+# (pyjhora ``const.amrita_gadiya_varjyam_star_map``, in 24ths of the star --
+# one unit is 60/24 = 2.5 ghatis); they matched on all 27 rows. Only the
+# arithmetic that places them in time is replaced, by the solved star span.
+STAR_GHATIS = 60
+WINDOW_GHATIS = 4
+
+VARJYAM_GHATIS: tuple[tuple[int, ...], ...] = (
+    (50,), (24,), (30,), (40,), (14,), (21,), (30,), (20,), (32,),     # Ashwini .. Ashlesha
+    (30,), (20,), (18,), (21,), (20,), (14,), (14,), (10,), (14,),     # Magha .. Jyeshtha
+    (20, 56), (24,), (20,), (10,), (10,), (18,), (16,), (24,), (30,),  # Mula .. Revati
+)
+
+AMRITA_GHATIS: tuple[int, ...] = (
+    42, 48, 54, 52, 38, 35, 54, 44, 56,     # Ashwini .. Ashlesha
+    54, 44, 42, 45, 44, 38, 38, 34, 38,     # Magha .. Jyeshtha
+    44, 48, 44, 34, 34, 42, 40, 48, 54,     # Mula .. Revati
+)
+
+
+def _star_windows(entry: float, leave: float, ghatis: tuple[int, ...],
+                  midnight_utc: float) -> tuple[tuple[float, float], ...]:
+    """One ``(start, end)`` per opening in *ghatis*, as float hours from local
+    midnight (negative on the previous evening, 24 or more after the coming
+    midnight), for a star the Moon enters at UTC JD *entry* and leaves at
+    *leave*."""
+    ghati = (leave - entry) / STAR_GHATIS
+    return tuple(
+        ((entry + g * ghati - midnight_utc) * 24.0,
+         (entry + (g + WINDOW_GHATIS) * ghati - midnight_utc) * 24.0)
+        for g in ghatis
+    )
+
+
 def _is_eclipse_day(target_date: date_type, place: drik.Place) -> bool:
     """True if a solar OR lunar eclipse is VISIBLE at *place* on this local day.
 
@@ -565,7 +735,8 @@ def compute_muhurat_for_day(
         sr_hours = _event_hours(drik.sunrise(jd, place)[0])
         sr = float_hours_to_hhmm(sr_hours)
     with _require("sunset", target_date, "muhurat_sunset_failed", _DAY_FRAME_HINT):
-        ss = float_hours_to_hhmm(_event_hours(drik.sunset(jd, place)[0]))
+        ss_hours = _event_hours(drik.sunset(jd, place)[0])
+        ss = float_hours_to_hhmm(ss_hours)
 
     mr = None
     with _degradable("moonrise", degraded_limbs, "muhurat_moonrise_failed"):
@@ -592,13 +763,21 @@ def compute_muhurat_for_day(
     # longitude reads — the same two-JD discipline as ``jd``/``jd_utc`` above.
     jd_rise = swe.julday(y, m, d, sr_hours)
     jd_rise_utc = jd_rise - place.timezone / 24.0
+    # Local midnight as a UTC Julian Day: every solved boundary below is served
+    # as float hours after it.
+    midnight_utc = jd_utc - 0.5
     #
     # The NAME of each single-body limb (nakshatra, yoga) is computed DIRECTLY
     # from the sidereal longitudes (13°20' buckets) — a deterministic, valid name
     # is always produced, bypassing the pyjhora index-lookup bug that could wrap
     # an out-of-range index to a wrong entry (precedent: chart.py computes the
-    # ascendant directly via swisseph). The pyjhora calls are kept ONLY for their
-    # end-time values.
+    # ascendant directly via swisseph). The tithi and karana NAMES still come
+    # from pyjhora at sunrise.
+    #
+    # Every END TIME is solved from the ephemeris (``_limb_end_hours``: the
+    # instant the limb's quantity reaches the end of its part), never read from
+    # the library, whose end times are a speed projection minutes off the
+    # boundary (see the solver section above).
     #
     # NAME and END TIME are classified SEPARATELY even where one call yields
     # both: the tithi and karana NAMES are the served day panchanga and RAISE,
@@ -620,36 +799,31 @@ def compute_muhurat_for_day(
     with _degradable(
         "panchanga.tithi_end", degraded_limbs, "muhurat_tithi_end_unavailable"
     ):
-        t_end = float_hours_to_hhmm(t_res[2])
+        t_end = float_hours_to_hhmm(_limb_end_hours(
+            _elongation, 12.0, t_res[0], jd_rise_utc, midnight_utc))
 
     # Nakshatra: NAME directly from the Moon's longitude at sunrise (always
-    # valid); end-time from pyjhora, degradable. The name reads jd_rise_utc so
+    # valid); end-time solved, degradable. The name reads jd_rise_utc so
     # drik.sidereal_longitude gets the true UTC Julian Day (a local JD causes a
     # ~tz * 0.55°/hr error — ~3° for IST).
-    n_name, _ = _nakshatra_from_moon(jd_rise_utc)
+    n_name, n_idx = _nakshatra_from_moon(jd_rise_utc)
     n_end = None
     with _degradable(
         "panchanga.nakshatra_end", degraded_limbs, "muhurat_nakshatra_end_unavailable"
     ):
-        n_res = drik.nakshatra(jd_rise, place)
-        n_idx = n_res[0]
-        if not 1 <= n_idx <= len(utils.NAKSHATRAS):
-            raise ValueError(f"nakshatra index out of range: {n_idx}")
-        n_end = float_hours_to_hhmm(n_res[3])  # index 3 contains the end float hour
+        n_end = float_hours_to_hhmm(_limb_end_hours(
+            _moon_longitude, _NAK_SPAN, n_idx, jd_rise_utc, midnight_utc))
 
     # Yoga: NAME directly from the Sun+Moon longitude sum at sunrise (always
-    # valid); end-time from pyjhora, degradable. jd_rise_utc for the same reason
-    # as the nakshatra above.
-    y_name, _ = _yoga_from_sun_moon(jd_rise_utc)
+    # valid); end-time solved, degradable. jd_rise_utc for the same reason as
+    # the nakshatra above.
+    y_name, y_idx = _yoga_from_sun_moon(jd_rise_utc)
     y_end = None
     with _degradable(
         "panchanga.yogam_end", degraded_limbs, "muhurat_yoga_end_unavailable"
     ):
-        y_res = drik.yogam(jd_rise, place)
-        y_idx = y_res[0]
-        if not 1 <= y_idx <= len(YOGAS):
-            raise ValueError(f"yoga index out of range: {y_idx}")
-        y_end = float_hours_to_hhmm(y_res[2])
+        y_end = float_hours_to_hhmm(_limb_end_hours(
+            _sun_moon_sum, _NAK_SPAN, y_idx, jd_rise_utc, midnight_utc))
 
     # Karana — the sunrise karana. It RAISES, like the tithi: a null karana is a
     # wrong day panchanga, and the karana is the limb that names Bhadra (Vishti)
@@ -666,7 +840,8 @@ def compute_muhurat_for_day(
     with _degradable(
         "panchanga.karana_end", degraded_limbs, "muhurat_karana_end_unavailable"
     ):
-        k_end = float_hours_to_hhmm(k_res[2])
+        k_end = float_hours_to_hhmm(_limb_end_hours(
+            _elongation, 6.0, k_res[0], jd_rise_utc, midnight_utc))
 
     # Derived weekday
     weekday = target_date.strftime("%A")
@@ -696,9 +871,15 @@ def compute_muhurat_for_day(
         "minutes a recommendation is chosen from"
     )
     auspicious = []
-    with _require("abhijit_muhurta", target_date, "muhurat_abhijit_failed", _AUSPICIOUS_HINT):
-        ab = drik.abhijit_muhurta(jd, place)
-        auspicious.append({"start": ab[0][:5], "end": ab[1][:5], "label": "Abhijit Muhurta"})
+    # Abhijit is the 8th of the 15 day muhurtas. On a Wednesday that same 8th
+    # muhurta is the day's Durmuhurtam (the Durmuhurtam table below opens
+    # Wednesday's at 5.6/12 of the day = 7/15, for 1/15), so it is not served as
+    # auspicious that day: the same minutes cannot be both, and the
+    # Durmuhurtam reading is the one this engine vetoes on.
+    if target_date.weekday() != 2:  # not Wednesday
+        with _require("abhijit_muhurta", target_date, "muhurat_abhijit_failed", _AUSPICIOUS_HINT):
+            ab = drik.abhijit_muhurta(jd, place)
+            auspicious.append({"start": ab[0][:5], "end": ab[1][:5], "label": "Abhijit Muhurta"})
 
     with _require("brahma_muhurtha", target_date, "muhurat_brahma_failed", _AUSPICIOUS_HINT):
         bm = drik.brahma_muhurtha(jd, place)
@@ -767,31 +948,47 @@ def compute_muhurat_for_day(
         if len(dm) >= 2:
             inauspicious.append({"start": dm[0][:5], "end": dm[1][:5], "label": "Durmuhurtam Period 1"})
         if len(dm) >= 4:
-            inauspicious.append({"start": dm[2][:5], "end": dm[3][:5], "label": "Durmuhurtam Period 2"})
+            dm2_end = dm[3][:5]
+            if target_date.weekday() == 1:  # Tuesday
+                # Tuesday's second Durmuhurtam is the 7th NIGHT muhurta: the
+                # night, sunset to the next sunrise, is cut into 15, and the
+                # 7th runs from 6/15 to 7/15 of it. The library opens it there
+                # but ends it one DAY muhurta later (start + day/15), which at
+                # London served 22:15-22:46 on 2026-12-08 for a muhurta that
+                # runs to 23:20, and 23:15-00:21 on 2026-06-16 for one that
+                # ends at 23:46. Its start is kept; its end is the muhurta's.
+                night_hours = 24.0 + _event_hours(drik.sunrise(jd + 1, place)[0]) - ss_hours
+                dm2_end = float_hours_to_hhmm(ss_hours + night_hours * 7 / 15)
+            inauspicious.append({"start": dm[2][:5], "end": dm2_end, "label": "Durmuhurtam Period 2"})
 
     with _require("varjyam", target_date, "muhurat_varjyam_failed", _VETO_HINT):
-        vj = drik.varjyam(jd, place)
-        # Float hours from this date's local midnight. Varjyam is a slice of
-        # the nakshatra in force at noon, so it can lie on the PREVIOUS evening
-        # (negative hours) or after the coming midnight (24 or more). Counted
-        # on the LIBRARY's output at four cities over 2026, its window started
-        # before midnight on 126 of 292 sampled days and after the next one on
-        # 5 -- a count of what drik.varjyam returns, not of the classical
-        # Varjyam: the library mis-signs the start of a nakshatra that began on
-        # the previous date, so its window is itself misplaced on many days, a
-        # separate defect this placement neither causes nor cures. The served
-        # HH:MM cannot say which date it is on, so the unrendered pair is kept
-        # for the scan below.
-        varjyam_hours = (float(vj[0]), float(vj[1]))
-        inauspicious.append({"start": float_hours_to_hhmm(vj[0]), "end": float_hours_to_hhmm(vj[1]), "label": "Varjyam"})
+        # The windows of the nakshatra the Moon occupies at local noon, cut
+        # from that star's SOLVED entry and exit (nakshatra_span) with the
+        # tyajya table above. Mula has two, and each is served and vetoed.
+        #
+        # Float hours from this date's local midnight: a slice of the noon
+        # star can lie on the PREVIOUS evening (negative hours) or after the
+        # coming midnight (24 or more). The served HH:MM cannot say which date
+        # it is on, so the unrendered pairs are kept for the scan below, one
+        # per served window and in served order.
+        star, star_entry, star_exit = nakshatra_span(jd_utc)
+        varjyam_hours = _star_windows(
+            star_entry, star_exit, VARJYAM_GHATIS[star - 1], midnight_utc,
+        )
+        for v_start, v_end in varjyam_hours:
+            inauspicious.append({"start": float_hours_to_hhmm(v_start), "end": float_hours_to_hhmm(v_end), "label": "Varjyam"})
 
-    # 7. Amrita periods — served for display only (zero reads in the scan
-    # pipeline: they are neither a veto nor a candidate-window source), so this
-    # is one of the limbs that may degrade. It names itself when it does.
-    amrita = []
-    with _degradable("amrita_periods", degraded_limbs, "muhurat_amrita_failed"):
-        ag = drik.amrita_gadiya(jd, place)
-        amrita.append({"start": float_hours_to_hhmm(ag[0]), "end": float_hours_to_hhmm(ag[1]), "label": "Amrita Gadiya"})
+    # 7. Amrita Gadiya — served for display only (zero reads in the scan
+    # pipeline: it is neither a veto nor a candidate-window source). It is cut
+    # from the same solved star span as the Varjyam above, with the amrita
+    # table, so it has no failure of its own: a span that cannot be solved has
+    # already raised as the Varjyam limb.
+    amrita = [
+        {"start": float_hours_to_hhmm(a_start), "end": float_hours_to_hhmm(a_end), "label": "Amrita Gadiya"}
+        for a_start, a_end in _star_windows(
+            star_entry, star_exit, (AMRITA_GHATIS[star - 1],), midnight_utc,
+        )
+    ]
 
     # 8. Panchaka free periods.
     #
@@ -967,7 +1164,7 @@ def compute_muhurat_for_day(
         # affecting limbs are absent from this list by construction: they raise.
         "degraded_limbs": degraded_limbs,
         # NOT on the wire: DayMuhurat declares no such field, so the response
-        # model drops it. It is how the electional scan places the Varjyam
+        # model drops it. It is how the electional scan places each Varjyam
         # window on the civil date it actually falls on (see VARJYAM_HOURS_KEY).
         VARJYAM_HOURS_KEY: varjyam_hours,
     }

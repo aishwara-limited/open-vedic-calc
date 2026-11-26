@@ -38,7 +38,6 @@ from zoneinfo import ZoneInfo
 import pytest
 import swisseph as swe
 from fastapi.testclient import TestClient
-from jhora.panchanga import drik
 
 from app.main import app
 from bphs_core import lagna_shuddhi as ls
@@ -209,45 +208,36 @@ def test_lagna_shuddhi_route_attributes_pre_dawn_instants(monkeypatch):
 _EPOCH = dt.date(2026, 12, 1)
 
 
-def _varjyam_abs(day: dt.date) -> tuple[float, float, bool]:
-    """The library's Varjyam for *day*: (start, end, degenerate), in minutes
-    after 2026-12-01 00:00 local.
-
-    On a few days the library returns a zero-width Varjyam; the engine has
-    always read a window whose start and end render to the same minute as the
-    whole civil day, and still does (fail closed for the surgery veto), so the
-    expectation models that reading rather than an empty window.
-    """
-    jd = utils.swe.julday(day.year, day.month, day.day, 12.0)
-    v = drik.varjyam(jd, PLACE)
+def _varjyam_abs(day: dt.date) -> list[tuple[float, float]]:
+    """The engine's Varjyam windows for *day*, in minutes after 2026-12-01
+    00:00 local, from the float hours it hands the scan
+    (``muhurat.VARJYAM_HOURS_KEY``; two windows on a Mula day)."""
+    hours = muhurat.compute_muhurat_for_day(PLACE, day)[muhurat.VARJYAM_HOURS_KEY]
     base = (day - _EPOCH).days * 1440.0
-    s, e = base + v[0] * 60.0, base + v[1] * 60.0
-    if e - s < 1.0:
-        return base, base + 1440.0, True
-    return s, e, False
+    return [(base + s * 60.0, base + e * 60.0) for s, e in hours]
 
 
-def _find_previous_evening_varjyam() -> dt.date:
-    """A day whose own Varjyam lies wholly on the PREVIOUS evening, and whose
-    previous day's Varjyam is a real (non-degenerate) window too."""
+def _find_previous_evening_varjyam() -> tuple[dt.date, tuple[float, float]]:
+    """A day with a Varjyam window lying wholly on the PREVIOUS evening, and
+    that window."""
     for i in range(3, 28):
         day = _EPOCH + dt.timedelta(days=i)
-        s, e, degenerate = _varjyam_abs(day)
         base = i * 1440.0
-        if (not degenerate and s < base - 120 and e - s > 60 and e < base
-                and not _varjyam_abs(day - dt.timedelta(days=1))[2]):
-            return day
+        for s, e in _varjyam_abs(day):
+            if s < base - 120 and e - s > 60 and e < base:
+                return day, (s, e)
     raise AssertionError("no day with a Varjyam wholly on the previous evening")
 
 
 def test_surgery_scan_places_varjyam_on_the_date_it_falls_on(monkeypatch):
-    """The expectation's hours come from the same library call the engine
-    makes (``drik.varjyam``), so this pins only WHERE the scan places those
-    hours -- on the date they fall on -- and says nothing about whether the
-    library's Varjyam is itself the classical one."""
-    frame = _find_previous_evening_varjyam()
+    """The expectation's hours are the ones the engine hands the scan, so this
+    pins only WHERE the scan places them -- on the date they fall on. Whether
+    they are the classical Varjyam is pinned against the ephemeris in
+    tests/test_muhurat_varjyam_end_times.py."""
+    frame, (s_f, e_f) = _find_previous_evening_varjyam()
     prev = frame - dt.timedelta(days=1)
-    windows = [_varjyam_abs(prev + dt.timedelta(days=k)) for k in range(-1, 4)]
+    windows = [w for k in range(-1, 4)
+               for w in _varjyam_abs(prev + dt.timedelta(days=k))]
     calls = _spy(monkeypatch)
     ls.scan_lagna_shuddhi(
         LAT, LON, TZ, None, None, prev.isoformat(), frame.isoformat(),
@@ -257,15 +247,14 @@ def test_surgery_scan_places_varjyam_on_the_date_it_falls_on(monkeypatch):
     for c in calls:
         day, minutes = _local(c["jd"])
         t = (day - _EPOCH).days * 1440.0 + minutes
-        if any(abs(t - b) < 2 for s, e, _ in windows for b in (s, e)):
+        if any(abs(t - b) < 2 for s, e in windows for b in (s, e)):
             continue
-        hits = [(s, e, deg) for s, e, deg in windows if s <= t < e]
+        hits = [(s, e) for s, e in windows if s <= t < e]
         assert c["detail"]["in_varjyam"] is bool(hits), (day, minutes)
         if hits:
             assert c["score"] == 0.0 and c["detail"]["hard_excluded"]
         # An instant inside the frame day's own Varjyam, which falls on the
         # civil date BEFORE that day: the case the old folding got wrong.
-        s_f, e_f, _ = windows[2]
         if s_f <= t < e_f and day == prev:
             moved += 1
     assert moved >= 1, "premise: the previous-evening Varjyam was sampled"

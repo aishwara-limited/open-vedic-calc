@@ -302,12 +302,14 @@ def test_day_panchanga_is_the_one_prevailing_at_sunrise():
     assert all(n >= 1 for n in differs_from_noon.values()), differs_from_noon
 
 
-# The library's end times are a speed-based estimate. Measured at sunrise over
-# December 2026 at three cities (UTC+5:30, +9 and -5) against the instant the
-# limb actually changes: tithi within 19.9 min, yoga 14.0, karana 4.7,
-# nakshatra 0.3. The tolerances sit just above those, and far below the hours
-# by which the end of the NOON limb misses the end of the sunrise one.
-_END_TOLERANCE_MIN = {"tithi": 25.0, "yogam": 20.0, "karana": 8.0, "nakshatra": 2.0}
+# The end times are solved from the ephemeris (bisection on the engine's own
+# longitudes). This reference reads the library-default (apparent) positions,
+# not the engine's geometric ones, a convention gap of about 75 arc-seconds for
+# the Moon -- under a minute of time for every limb -- and the served HH:MM is
+# the minute the instant falls in. The library's speed-projected end times this
+# replaced missed by up to 19.9 min (tithi), 14.0 (yoga) and 4.7 (karana) on
+# this same window.
+_END_TOLERANCE_MIN = {"tithi": 2.0, "yogam": 2.0, "karana": 2.0, "nakshatra": 2.0}
 _BUCKETS = {
     "tithi": lambda jd: int(ref.elongation(jd) // 12.0),
     "karana": lambda jd: int(ref.elongation(jd) // 6.0),
