@@ -21,9 +21,11 @@ assumed. ``bphs_core/lagna_shuddhi.py`` builds the entire candidate-minute set
 for a day from ``auspicious_muhurtas`` + the favourable ``chogadiya`` windows
 (``_candidate_minutes``); it hard-excludes on the Rahu/Yamaganda/Gulika windows
 and, per activity, on Durmuhurtam/Varjyam, the Vishti karana, the eclipse flag
-and the adhika-maasa flag; it scores on the tithi/yoga names and derives the
-hora lord from the served ``sunrise``. A limb feeding any of those decides which
-minute is recommended, and a dropped window or a ``None`` there does not make
+and the adhika-maasa flag; it scores on the tithi/yoga and derives the hora lord
+and vaara from the served ``sunrise``/``date``. (The tithi, karana and yoga it
+reads are evaluated at the candidate instant, not taken from the day's names;
+the day's tithi/karana NAMES still raise because they ARE the served day
+panchanga.) A limb feeding any of those decides which minute is recommended, and a dropped window or a ``None`` there does not make
 the engine cautious — it silently deletes a veto or a candidate. The limbs with
 **zero** reads anywhere in the scan pipeline (moonrise, moonset, the four
 end-times, the amrita windows, the 30-muhurta display table, the personal

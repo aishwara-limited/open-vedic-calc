@@ -86,26 +86,41 @@ class TestMuhuratUTCNakshatra:
         assert wrong_nak == "Rohini"
 
     def test_compute_muhurat_nakshatra_utc_corrected(self):
-        """compute_muhurat_for_day must NOT use the raw local-noon jd for
-        nakshatra/yoga — the returned panchanga nakshatra must match the
-        UTC-corrected Moon longitude bucket (Krittika, not Rohini)."""
+        """compute_muhurat_for_day must NOT read the Moon at a local-clock jd
+        as if it were UTC. The day panchanga is the one prevailing at SUNRISE
+        (tests/test_muhurat_instant_panchanga.py), so the served nakshatra must
+        match the Moon at the UTC-corrected sunrise instant.
+
+        2025-01-12 at 13.0N 77.6E (IST): the Moon enters Ardra between true
+        sunrise (about 06:49 IST = 01:19 UT) and the instant a local-clock
+        sunrise jd would denote if misread as UT (06:49 UT), so the two reads
+        disagree there and only the UTC one is correct."""
         from bphs_core import muhurat as m
         from bphs_core import utils
 
         place = _make_place(13.0, 77.6, 5.5)
-        target_date = datetime.date(2025, 1, 10)  # known boundary: local=Rohini, UTC=Krittika
+        target_date = datetime.date(2025, 1, 12)
 
         day = m.compute_muhurat_for_day(place, target_date)
         reported_nak = day["panchanga"]["nakshatra"]
 
         y, mo, d = target_date.year, target_date.month, target_date.day
-        jd_utc = swe.julday(y, mo, d, 12.0 - place.timezone)
-        expected_idx = int((drik.sidereal_longitude(jd_utc, swe.MOON) % 360) / (360.0 / 27)) % 27
-        expected_nak = utils.NAKSHATRAS[expected_idx]  # = Krittika
+        rise_hours = drik.sunrise(swe.julday(y, mo, d, 12.0), place)[0]
+        jd_rise_local = swe.julday(y, mo, d, rise_hours)
+        jd_rise_utc = jd_rise_local - place.timezone / 24.0
 
+        def nak(jd):
+            idx = int((drik.sidereal_longitude(jd, swe.MOON) % 360) / (360.0 / 27)) % 27
+            return utils.NAKSHATRAS[idx]
+
+        expected_nak, wrong_nak = nak(jd_rise_utc), nak(jd_rise_local)
+        assert (expected_nak, wrong_nak) == ("Mrigashira", "Ardra"), (
+            "Test precondition: the UTC and the misread local sunrise must "
+            "fall on either side of a nakshatra boundary"
+        )
         assert reported_nak == expected_nak, (
-            f"nakshatra should be UTC-corrected '{expected_nak}' but got '{reported_nak}' "
-            "(local-noon jd gives 'Rohini' — the pre-fix wrong answer)"
+            f"nakshatra should be UTC-corrected '{expected_nak}' but got "
+            f"'{reported_nak}' (a local-clock jd read as UT gives '{wrong_nak}')"
         )
 
 

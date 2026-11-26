@@ -129,7 +129,11 @@ accuracy on days the files *do* cover, at HTTP 200. The upper bound is pulled in
 by 39 days so the whole of that reach still lands inside the data. The **lower**
 bound is not pulled in, deliberately — the backward search also leaves the files,
 but swisseph's fallback is measured *not* to persist in that direction, so
-narrowing there would cost ~4.5 years of range and buy nothing.
+narrowing there would cost ~4.5 years of range and buy nothing. A lagna-shuddhi
+scan computes one neighbouring day beyond each end of its request (an instant is
+scored against the sunrise-to-sunrise day that contains it, and night windows
+reach the next date), so it reads one day further each way; measured, that stays
+clean at both bounds and every timezone corner.
 
 Two of these fields used to fault rather than answer — `at_date=9999-01-01`
 raised an uncaught `swisseph.Error` and `reference_date=9999-01-01` an uncaught
@@ -266,7 +270,15 @@ With them:
 - a date whose local noon the zone skipped or repeated has no offset to choose
   (`Pacific/Apia` skipped 2011-12-30; in `America/New_York` noon ran twice on
   1883-11-18). It is a 422 `muhurat_limb_error` naming the limb `utc_offset`,
-  and an `/async` job for it ends in `error` with a message naming that limb;
+  and an `/async` job for it ends in `error` with a message naming that limb.
+  The electional scans also read the day either side of the request, so a
+  request for 2011-12-31 at `Pacific/Apia` is refused the same way, naming
+  2011-12-30;
+- the electional scans score an instant before sunrise in the vaara that began
+  at the previous sunrise, whose windows were computed on that earlier date's
+  offset. Their minute axis is absolute time, so across a night-time clock
+  change such an instant is still matched against those windows, and counted
+  from that sunrise, in real elapsed time;
 - on a clock-change day no wall time is scored that does not exist, that names
   two different instants, or that lies on the other side of the change from the
   day's own offset (`bphs_core/event_clock.py`);
