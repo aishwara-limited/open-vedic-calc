@@ -544,8 +544,8 @@ class TestVimshopakaEdges:
         pyjhora import, i.e. the literal BPHS fallback table in the except arm.
       - ``compute_vimshopaka`` — the ``pd is None`` arm, where a planet absent
         from a varga contributes 0 for that varga.
-      - ``compute_all_vimshopaka`` — the ``if p in snapshot.rasi_chart`` filter.
-      - ``_dignity_factor`` — the unrecognised-dignity fallback.
+      - ``_rasi_longitudes`` — the refusal of a rasi chart without all seven
+        grahas, whose places the temporary relationship needs.
     """
 
     def test_fallback_table_matches_bphs_if_pyjhora_unavailable(self):
@@ -564,28 +564,24 @@ class TestVimshopakaEdges:
         for that varga."""
         from bphs_core.vimshopaka import compute_vimshopaka
         # Only populate rasi_chart (D1); all other vargas empty → D2..D60 contribute 0.
-        sun = _planet("Aries", 10.0, 1, "exalted", planet_name="Sun")
-        snap = _snapshot({"Sun": sun})
-        result = compute_vimshopaka(snap, "Sun")
-        # D1 exalted = 3.0 * 1.0 = 3.0. All others = 0.
+        rasi = {g: _planet("Capricorn", 10.0, 10, planet_name=g)
+                for g in ("Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn")}
+        rasi["Sun"] = _planet("Leo", 10.0, 5, planet_name="Sun")
+        result = compute_vimshopaka(_snapshot(rasi), "Sun")
+        # D1 own sign (Leo) = 3.0 * 20 / 20 = 3.0. All others = 0.
         assert result.contributions["D1"] == pytest.approx(3.0)
         for label in ("D2", "D3", "D7", "D9", "D10", "D12", "D16", "D30", "D60"):
             assert result.contributions[label] == 0.0
         assert result.total == pytest.approx(3.0)
 
-    def test_compute_all_vimshopaka_skips_planets_not_in_rasi(self):
-        """compute_all_vimshopaka only returns planets present in rasi_chart."""
+    def test_compute_all_vimshopaka_refuses_a_partial_rasi_chart(self):
+        """_rasi_longitudes: a rasi chart without all seven grahas is refused,
+        naming what is missing, rather than scored as nothing."""
         from bphs_core.vimshopaka import compute_all_vimshopaka
-        sun = _planet("Aries", 10.0, 1, "exalted", planet_name="Sun")
+        sun = _planet("Aries", 10.0, 1, planet_name="Sun")
         snap = _snapshot({"Sun": sun})
-        results = compute_all_vimshopaka(snap)
-        planets = {r.planet for r in results}
-        assert planets == {"Sun"}
-
-    def test_unrecognised_dignity_defaults_to_neutral_factor(self):
-        """_dignity_factor for unknown dignity string → 0.5 (neutral fallback)."""
-        from bphs_core.vimshopaka import _dignity_factor
-        assert _dignity_factor("unknown_dignity") == 0.5
+        with pytest.raises(ValueError, match="Moon"):
+            compute_all_vimshopaka(snap)
 
 
 # ===========================================================================

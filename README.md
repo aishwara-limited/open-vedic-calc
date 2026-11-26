@@ -380,3 +380,33 @@ by three. `minimum_bala` is the required Shadbala of BPHS 27.32-33.
 `bhava_adhipathi_bala` is the full Shadbala of the house lord, `bhava_drik` the
 bhava drishti bala (BPHS 27.29), and `bala_total` adds the bhava digbala
 (BPHS 27.28) to both.
+
+`vimshopaka` is the Dashavarga Vimshopaka Bala of BPHS ch. 7 vv. 20-27
+(`bphs_core/vimshopaka.py`). In each of the ten vargas a graha in its own sign
+scores 20; otherwise it scores by its compound relationship with the lord of
+that varga sign (BPHS 3.55-58: the natural relationship combined with the
+temporary one read from the rasi chart) — 18, 15, 10, 7 or 5 for a great
+friend, friend, neutral, enemy or great enemy. There is no separate step for
+exaltation or debilitation. Each varga contributes its weight times that score
+over 20, and the weights total 20. `grade` serves the four bands of BPHS
+7.26-27 (below 5, 5-10, 10-15, 15 and over) as `very weak`, `weak`, `good` and
+`excellent`.
+
+`ashtakavarga` carries the Bhinnashtakavarga and Sarvashtakavarga by the
+benefic places of BPHS ch. 66, which `bindu_score` in `/v1/transits` also
+reads. Four rows of that chapter differ from the variant table many printed
+tables and programs carry: the Moon's places from the Moon, Mars and Jupiter
+(vv. 46-48) and Venus's from Mars (vv. 56-58). The totals per graha are the
+same in both, so the difference shows only sign by sign.
+
+### Dignity
+
+The `dignity` of each rasi-chart placement honours the degree arcs of BPHS
+3.49-54 (`get_rasi_dignity` in `bphs_core/utils.py`): moolatrikona holds only
+its arc — the Sun Leo 0-20, the Moon Taurus 3-30, Mars Aries 0-12, Mercury
+Virgo 15-20, Jupiter Sagittarius 0-10, Venus Libra 0-15, Saturn Aquarius 0-20
+— and the rest of the sign is the graha's own sign; the Moon is exalted only in
+Taurus 0-3 and Mercury only in Virgo 0-15. Every other exaltation and
+debilitation holds the whole sign. The divisional charts are judged by sign
+alone (`get_planet_dignity`), as BPHS 27.2-4 judges each varga. The lagna
+lord's dignity in the muhurat scan reads the same arcs.

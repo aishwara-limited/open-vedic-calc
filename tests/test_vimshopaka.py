@@ -5,8 +5,8 @@ from datetime import datetime, time
 from bphs_core.chart import Chart, PersonalData
 from bphs_core.vimshopaka import (
     _DASHAVARGA_WEIGHTS_RAW,
-    _DIGNITY_FACTOR,
     _VARGA_ATTR,
+    _VIMSHOPAKA_SCORE,
     _grade,
     compute_all_vimshopaka,
 )
@@ -47,20 +47,16 @@ def test_individual_weights_match_bphs():
 
 
 # ---------------------------------------------------------------------------
-# Dignity factors monotonic by classical strength
+# The varga scores of BPHS 7.24-25
 # ---------------------------------------------------------------------------
 
-def test_dignity_factors_monotonic():
-    # Strongest -> weakest dignity must yield non-increasing factors.
-    ladder = ["exalted", "own sign", "great friend", "friendly",
-              "neutral", "enemy", "great enemy", "debilitated"]
-    factors = [_DIGNITY_FACTOR[d] for d in ladder]
-    assert factors == sorted(factors, reverse=True)
-    # Exalted/MT/own are the ceiling (1.0); debilitated is the floor (0.0).
-    assert _DIGNITY_FACTOR["exalted"] == 1.0
-    assert _DIGNITY_FACTOR["moolatrikona"] == 1.0
-    assert _DIGNITY_FACTOR["own sign"] == 1.0
-    assert _DIGNITY_FACTOR["debilitated"] == 0.0
+def test_varga_scores_are_the_bphs_scale():
+    # Own varga 20, adhimitra 18, mitra 15, sama 10, shatru 7, adhishatru 5;
+    # no step for exaltation or debilitation.
+    assert _VIMSHOPAKA_SCORE == {
+        "own": 20.0, "great friend": 18.0, "friend": 15.0,
+        "neutral": 10.0, "enemy": 7.0, "great enemy": 5.0,
+    }
 
 
 def test_grade_bands():

@@ -219,8 +219,7 @@ class TestScoreInstantUsesTheNamedGrahas:
         mars_lon = drik.sidereal_longitude(_JD, swe.MARS)
         mars_sign_idx = int(mars_lon // 30) % 12
         want_house = (mars_sign_idx - utils.SIGNS.index("Aries")) % 12 + 1
-        want_dignity = utils.get_planet_dignity(
-            "Mars", utils.SIGNS[mars_sign_idx])
+        want_dignity = utils.get_rasi_dignity("Mars", mars_lon)
 
         _, detail = ls._score_instant(
             _JD, "Aries", "Mars", _base_day_data(), 480, "generic")
