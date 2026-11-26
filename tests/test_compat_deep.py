@@ -426,12 +426,31 @@ class TestMangalDosha:
         assert any("own sign or exalted" in r for r in reasons)
 
     def test_jupiter_aspect_cancellation(self):
-        snap = _mock_chart({
-            "Mars": {"sign": "Gemini", "house": 7,
-                     "aspects": ["Jupiter"]},
-        })
+        """Jupiter in Libra casts its 9th aspect on Mars in Gemini, so Mars
+        appears in JUPITER's aspect list (the grahas Jupiter aspects)."""
+        snap = _mock_chart(
+            {
+                "Mars": {"sign": "Gemini", "house": 7},
+                "Jupiter": {"sign": "Libra", "house": 11, "aspects": ["Mars"]},
+            },
+            lagna="Sagittarius", lagna_lord="Jupiter",
+        )
         _, _, reasons = compat._mangal_dosha_raw(snap)
-        assert any("Jupiter" in r for r in reasons)
+        assert reasons == ["Jupiter's influence on Mars cancels the Mangal Dosha."]
+
+    def test_mars_aspecting_jupiter_does_not_cancel(self):
+        """Mars in Gemini casts its 8th aspect on Jupiter in Capricorn, but
+        Jupiter (Gemini is the 6th sign from Capricorn) does not aspect Mars:
+        the aspect Mars gives is not Jupiter's influence on Mars."""
+        snap = _mock_chart(
+            {
+                "Mars": {"sign": "Gemini", "house": 7, "aspects": ["Jupiter"]},
+                "Jupiter": {"sign": "Capricorn", "house": 2, "aspects": []},
+            },
+            lagna="Sagittarius", lagna_lord="Jupiter",
+        )
+        _, _, reasons = compat._mangal_dosha_raw(snap)
+        assert reasons == []
 
     def test_lagna_or_moon_cancellation(self):
         snap = _mock_chart(
