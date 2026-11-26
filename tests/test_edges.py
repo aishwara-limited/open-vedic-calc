@@ -599,7 +599,7 @@ class TestYogasEdges:
       - ``detect_viparita_raja_yoga`` — the ``lord is None`` continue guard.
       - ``detect_raja_yogas`` — the house-1 guard of the single-graha rule (house
         1 sits in both the kendra and the trikona list, and counts on neither
-        side there), and the ``seen_conjunction`` dedup.
+        side there), and the ``seen_pairs`` dedup.
       - ``detect_parivartana_yoga`` — an empty ``planets`` list (nothing to
         iterate), and the ``lord_of_a == p_a`` own-sign skip.
     """
@@ -678,7 +678,7 @@ class TestYogasEdges:
                 pytest.fail("Degenerate house-1 Raja Yoga was not suppressed")
 
     def test_raja_yoga_seen_conjunction_dedup(self):
-        """detect_raja_yogas seen_conjunction dedup: the same kendra-lord/trikona-lord
+        """detect_raja_yogas seen_pairs dedup: the same kendra-lord/trikona-lord
         pair conjunct in the same house must appear only once even if enumerated from
         multiple (kh, th) combinations."""
         from bphs_core.yogas import detect_raja_yogas

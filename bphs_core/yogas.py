@@ -1,12 +1,17 @@
 from dataclasses import dataclass, field
 
 from . import utils
-from .chart import ChartSnapshot
+from .chart import _ASPECTS, ChartSnapshot
 
 DUSTHANA = {6, 8, 12}
 KENDRA = {1, 4, 7, 10}
 TRIKONA = {1, 5, 9}
 UPACHAYA = {3, 6, 10, 11}
+# BPHS 34.15: a kendra or kona lord that also owns an evil house does not
+# make the pair Raja Yoga by relation alone. The evil houses, as ruled for
+# this engine, are the 3rd, 6th, 8th and 11th, and the lagna lord is exempt
+# (34.2-7 call the lord of the lagna specially auspicious).
+BLEMISHING_HOUSES = (3, 6, 8, 11)
 
 
 @dataclass
@@ -23,6 +28,39 @@ class Yoga:
 def _house_lord(snapshot: ChartSnapshot, house: int) -> str | None:
     sign = utils.SIGNS[int(snapshot.house_cusps[house - 1] // 30) % 12]
     return utils.get_sign_lord(sign)
+
+
+def _owned_signs(planet: str) -> set[str]:
+    return {sign for sign in utils.SIGNS if utils.get_sign_lord(sign) == planet}
+
+
+def _aspects_sign(planet: str, from_sign: str, to_sign: str) -> bool:
+    """Full graha drishti, BPHS 26.2-5: every graha aspects the 7th sign
+    from its own; Saturn also the 3rd and 10th, Jupiter the 5th and 9th,
+    Mars the 4th and 8th (the offsets of ``chart._ASPECTS``)."""
+    offset = (utils.SIGNS.index(to_sign) - utils.SIGNS.index(from_sign)) % 12 + 1
+    return offset in _ASPECTS.get(planet, ())
+
+
+def _pair_relations(a: str, a_sign: str, b: str, b_sign: str) -> list[str]:
+    """The relations of BPHS 34.11-12 between graha *a* in *a_sign* and
+    graha *b* in *b_sign*, as the phrases a Raja Yoga description carries:
+    together in one sign, an exchange of signs, one standing in the other's
+    sign, and a full aspect each on the other. Empty when unrelated."""
+    relations: list[str] = []
+    if a_sign == b_sign:
+        relations.append("conjunct")
+    a_in_b = a_sign in _owned_signs(b)
+    b_in_a = b_sign in _owned_signs(a)
+    if a_in_b and b_in_a:
+        relations.append("exchange signs")
+    elif a_in_b:
+        relations.append(f"{a} in {b}'s sign")
+    elif b_in_a:
+        relations.append(f"{b} in {a}'s sign")
+    if _aspects_sign(a, a_sign, b_sign) and _aspects_sign(b, b_sign, a_sign):
+        relations.append("mutual aspect")
+    return relations
 
 
 def _planet_house(snapshot: ChartSnapshot, planet: str) -> int:
@@ -102,9 +140,15 @@ def detect_raja_yogas(snapshot: ChartSnapshot) -> list[Yoga]:
     # make a Raja Yoga.
     #
     # THE PAIR (34.11-12): the lord of a kendra and the lord of a kona related to
-    # each other. The relation detected here is the two standing in one sign.
+    # each other. The text names four relations and all four are detected
+    # (_pair_relations): an exchange of signs, the two in one sign, a full aspect
+    # each on the other (26.2-5), and one standing in the other's sign. A pair is
+    # reported once, however many kendra/kona roles its two grahas hold.
     # House 1 is both a kendra and a kona (34.3), and the lagna lord joining the
     # 5th or 9th lord is such a pair, so house 1 stays in BOTH lists.
+    #
+    # THE BLEMISH (34.15): a pair is not reported when either lord, other than
+    # the lagna lord, also rules the 3rd, 6th, 8th or 11th (BLEMISHING_HOUSES).
     #
     # THE YOGAKARAKA (34.13): one graha holding a kona lordship and a kendra
     # lordship. Here house 1 does NOT count on either side. 34.3 calls the lagna
@@ -121,12 +165,17 @@ def detect_raja_yogas(snapshot: ChartSnapshot) -> list[Yoga]:
     # Yoga on every Gemini, Virgo, Sagittarius and Pisces chart, wherever the
     # lagna lord stood. The six that remain are the six get_yoga_karaka_planet
     # lists; the two are pinned to each other, and to the text, by
-    # tests/test_raja_yoga_yogakaraka.py.
+    # tests/test_raja_yoga_yogakaraka.py. The yogakaraka is one by lordship
+    # alone: no placement condition, and 34.15 cannot touch it (a graha ruling a
+    # kendra and a kona with its two signs rules no third house). The pair rule
+    # is pinned for all twelve ascendants by tests/test_raja_yoga_pair_rule.py.
     yogas: list[Yoga] = []
     kendra_lords = [(h, _house_lord(snapshot, h)) for h in sorted(KENDRA)]
     trikona_lords = [(h, _house_lord(snapshot, h)) for h in sorted(TRIKONA)]
+    lagna_lord = _house_lord(snapshot, 1)
+    blemished = {_house_lord(snapshot, h) for h in BLEMISHING_HOUSES} - {lagna_lord}
     seen_single: set[str] = set()
-    seen_conjunction: set[frozenset] = set()
+    seen_pairs: set[frozenset] = set()
     for kh, kl in kendra_lords:
         for th, tl in trikona_lords:
             if not kl or not tl:
@@ -145,21 +194,28 @@ def detect_raja_yogas(snapshot: ChartSnapshot) -> list[Yoga]:
                     activating_lords=[kl],
                 ))
             else:
+                pair = frozenset({kl, tl})
+                if pair in seen_pairs or kl in blemished or tl in blemished:
+                    continue
                 kl_pd = snapshot.rasi_chart.get(kl)
                 tl_pd = snapshot.rasi_chart.get(tl)
-                if kl_pd and tl_pd and kl_pd.house == tl_pd.house:
-                    pair = frozenset({kl, tl})
-                    if pair in seen_conjunction:
-                        continue
-                    seen_conjunction.add(pair)
-                    yogas.append(Yoga(
-                        name="Raja Yoga",
-                        description=f"{kl} (kendra lord) conjunct {tl} (trikona lord)",
-                        planets_involved=[kl, tl],
-                        houses_involved=[kl_pd.house],
-                        strength=_compute_yoga_strength(snapshot, [kl, tl]),
-                        activating_lords=[kl, tl],
-                    ))
+                if not kl_pd or not tl_pd:
+                    continue
+                relations = _pair_relations(kl, kl_pd.sign, tl, tl_pd.sign)
+                if not relations:
+                    continue
+                seen_pairs.add(pair)
+                yogas.append(Yoga(
+                    name="Raja Yoga",
+                    description=(
+                        f"{kl} (kendra lord) and {tl} (trikona lord): "
+                        + ", ".join(relations)
+                    ),
+                    planets_involved=[kl, tl],
+                    houses_involved=sorted({kl_pd.house, tl_pd.house}),
+                    strength=_compute_yoga_strength(snapshot, [kl, tl]),
+                    activating_lords=[kl, tl],
+                ))
     return yogas
 
 
@@ -170,7 +226,13 @@ def detect_dhana_yogas(snapshot: ChartSnapshot) -> list[Yoga]:
     lord5 = _house_lord(snapshot, 5)
     lord9 = _house_lord(snapshot, 9)
     for a, b, houses in [(lord2, lord11, [2, 11]), (lord5, lord9, [5, 9])]:
-        if not a or not b:
+        # An association needs two grahas: a graha is never conjunct with
+        # itself. One graha rules both the 2nd and the 11th for Leo (Mercury)
+        # and Aquarius (Jupiter); BPHS grants it no wealth yoga for that, and
+        # ch. 34 counts it among the malefics for Leo (34.29-30) and the
+        # killers for Aquarius (34.41-42). The 5th and 9th never share a lord.
+        # Pinned by tests/test_dhana_yoga_two_lords.py.
+        if not a or not b or a == b:
             continue
         a_pd = snapshot.rasi_chart.get(a)
         b_pd = snapshot.rasi_chart.get(b)
@@ -252,7 +314,10 @@ def detect_all_yogas(snapshot: ChartSnapshot) -> list[Yoga]:
 
 def get_yoga_karaka_planet(snapshot: ChartSnapshot) -> str:
     lagna = snapshot.lagna
-    # Yoga karakas by lagna sign (classic BPHS list)
+    # Yoga karakas by lagna sign, BPHS 34.13 (one graha ruling a kendra and a
+    # kona, the lagna counted on neither side), by lordship alone, as named
+    # ascendant by ascendant: Taurus 34.23, Cancer 34.27, Leo 34.29, Libra
+    # 34.33, Capricorn 34.40, Aquarius 34.41.
     YOGA_KARAKAS: dict[str, str] = {
         "Taurus": "Saturn", "Libra": "Saturn",
         "Cancer": "Mars", "Leo": "Mars",
