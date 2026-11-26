@@ -2,9 +2,9 @@
   "alternatives": [
     {
       "band": "Fair",
-      "instant": "2026-05-26 00:00",
-      "score": 0.49,
-      "score_100": 49,
+      "instant": "2026-05-26 05:00",
+      "score": 0.59,
+      "score_100": 59,
       "window": null
     },
     {
@@ -16,9 +16,9 @@
     },
     {
       "band": "Fair",
-      "instant": "2026-05-26 02:00",
-      "score": 0.4,
-      "score_100": 40,
+      "instant": "2026-05-26 00:00",
+      "score": 0.39,
+      "score_100": 39,
       "window": null
     },
     {
@@ -38,24 +38,23 @@
   ],
   "band": "Fair",
   "best_window": {
-    "end": "05:01",
+    "end": "04:01",
     "label": "Best joint window for generic",
-    "start": "05:00"
+    "start": "04:00"
   },
-  "clearance_summary": "Joint best_effort window for 2 members. Clear of Rahu Kala, Yamaganda and Gulika. Panchanga: Shukla Ekadashi, yoga Siddhi \u2014 suitable. Tara Bala: Janma; Chandra Bala: Neutral. Rising Aries (lord Mars) in the 1st, moolatrikona. Event Navamsha lagna Scorpio (not specially indicated for generic).",
+  "clearance_summary": "Joint best_effort window for 2 members. Clear of Rahu Kala, Yamaganda and Gulika. Panchanga: Shukla Dashami, yoga Siddhi \u2014 suitable. Tara Bala: Paramitra; Chandra Bala: Neutral. Rising Aries (lord Mars) in the 1st, moolatrikona. Event Navamsha lagna Cancer (suitable for generic).",
   "compromised_members": [
-    "sample_a",
     "sample_b"
   ],
   "consensus_quality": "best_effort",
-  "instant": "2026-05-26 05:00",
+  "instant": "2026-05-26 04:00",
   "per_member": [
     {
-      "band": "Fair",
+      "band": "Good",
       "chandra_bala": "Neutral",
-      "chogadiya_label": "Kaal (Inauspicious)",
-      "event_navamsha": "Scorpio",
-      "event_navamsha_suitable": false,
+      "chogadiya_label": "Amrit (Highly Auspicious)",
+      "event_navamsha": "Cancer",
+      "event_navamsha_suitable": true,
       "factors": [
         {
           "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
@@ -63,12 +62,12 @@
           "name": "Inauspicious periods"
         },
         {
-          "detail": "Janma \u2014 unfavourable.",
-          "impact": "negative",
+          "detail": "Paramitra \u2014 favourable.",
+          "impact": "positive",
           "name": "Tara Bala"
         },
         {
-          "detail": "Shukla Ekadashi, Siddhi yoga \u2014 suitable.",
+          "detail": "Shukla Dashami, Siddhi yoga \u2014 suitable.",
           "impact": "positive",
           "name": "Panchanga"
         },
@@ -83,38 +82,43 @@
           "name": "Lagna lord house"
         },
         {
-          "detail": "Within Brahma Muhurtha.",
+          "detail": "Amrit (Highly Auspicious).",
           "impact": "positive",
-          "name": "Muhurta"
+          "name": "Chogadiya"
+        },
+        {
+          "detail": "Navamsa lagna Cancer suits the activity.",
+          "impact": "positive",
+          "name": "Event Navamsha"
         }
       ],
       "hard_gate_failed": false,
-      "hora_lord": "Venus",
-      "in_auspicious_muhurta": "Brahma Muhurtha",
+      "hora_lord": "Saturn",
+      "in_auspicious_muhurta": null,
       "in_durmuhurtam": false,
       "in_gulika": false,
       "in_rahu_kala": false,
       "in_varjyam": false,
       "in_yamaganda": false,
-      "instant": "2026-05-26 05:00",
+      "instant": "2026-05-26 04:00",
       "lagna_lord": "Mars",
       "lagna_lord_dignity": "moolatrikona",
       "lagna_lord_house": 1,
       "lagna_sign": "Aries",
       "name": "sample_a",
       "panchanga_suitable": true,
-      "score": 0.63,
-      "score_100": 63,
-      "tara_bala": "Janma",
-      "tithi": "Shukla Ekadashi",
+      "score": 0.73,
+      "score_100": 73,
+      "tara_bala": "Paramitra",
+      "tithi": "Shukla Dashami",
       "yoga": "Siddhi"
     },
     {
       "band": "Fair",
       "chandra_bala": "Inauspicious (Avoid)",
-      "chogadiya_label": "Kaal (Inauspicious)",
-      "event_navamsha": "Scorpio",
-      "event_navamsha_suitable": false,
+      "chogadiya_label": "Amrit (Highly Auspicious)",
+      "event_navamsha": "Cancer",
+      "event_navamsha_suitable": true,
       "factors": [
         {
           "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
@@ -122,8 +126,8 @@
           "name": "Inauspicious periods"
         },
         {
-          "detail": "Naidhana \u2014 unfavourable.",
-          "impact": "negative",
+          "detail": "Sadhana \u2014 favourable.",
+          "impact": "positive",
           "name": "Tara Bala"
         },
         {
@@ -132,7 +136,7 @@
           "name": "Chandra Bala"
         },
         {
-          "detail": "Shukla Ekadashi, Siddhi yoga \u2014 suitable.",
+          "detail": "Shukla Dashami, Siddhi yoga \u2014 suitable.",
           "impact": "positive",
           "name": "Panchanga"
         },
@@ -147,33 +151,38 @@
           "name": "Lagna lord house"
         },
         {
-          "detail": "Within Brahma Muhurtha.",
+          "detail": "Amrit (Highly Auspicious).",
           "impact": "positive",
-          "name": "Muhurta"
+          "name": "Chogadiya"
+        },
+        {
+          "detail": "Navamsa lagna Cancer suits the activity.",
+          "impact": "positive",
+          "name": "Event Navamsha"
         }
       ],
       "hard_gate_failed": false,
-      "hora_lord": "Venus",
-      "in_auspicious_muhurta": "Brahma Muhurtha",
+      "hora_lord": "Saturn",
+      "in_auspicious_muhurta": null,
       "in_durmuhurtam": false,
       "in_gulika": false,
       "in_rahu_kala": false,
       "in_varjyam": false,
       "in_yamaganda": false,
-      "instant": "2026-05-26 05:00",
+      "instant": "2026-05-26 04:00",
       "lagna_lord": "Mars",
       "lagna_lord_dignity": "moolatrikona",
       "lagna_lord_house": 1,
       "lagna_sign": "Aries",
       "name": "sample_b",
       "panchanga_suitable": true,
-      "score": 0.51,
-      "score_100": 51,
-      "tara_bala": "Naidhana",
-      "tithi": "Shukla Ekadashi",
+      "score": 0.61,
+      "score_100": 61,
+      "tara_bala": "Sadhana",
+      "tithi": "Shukla Dashami",
       "yoga": "Siddhi"
     }
   ],
-  "score": 0.51,
-  "score_100": 51
+  "score": 0.61,
+  "score_100": 61
 }

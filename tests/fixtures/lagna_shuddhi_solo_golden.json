@@ -1,25 +1,14 @@
 {
   "alternatives": [
     {
-      "band": "Good",
-      "instant": "2026-05-26 00:00",
-      "score": 0.61,
-      "score_100": 61,
-      "window": {
-        "end": "00:01",
-        "label": "Alternative window",
-        "start": "00:00"
-      }
-    },
-    {
       "band": "Fair",
-      "instant": "2026-05-26 02:00",
-      "score": 0.55,
-      "score_100": 55,
+      "instant": "2026-05-26 05:00",
+      "score": 0.71,
+      "score_100": 71,
       "window": {
-        "end": "02:01",
+        "end": "05:01",
         "label": "Alternative window",
-        "start": "02:00"
+        "start": "05:00"
       }
     },
     {
@@ -31,6 +20,17 @@
         "end": "12:01",
         "label": "Alternative window",
         "start": "12:00"
+      }
+    },
+    {
+      "band": "Fair",
+      "instant": "2026-05-26 00:00",
+      "score": 0.51,
+      "score_100": 51,
+      "window": {
+        "end": "00:01",
+        "label": "Alternative window",
+        "start": "00:00"
       }
     },
     {
@@ -57,11 +57,11 @@
     }
   ],
   "best_instant": {
-    "band": "Fair",
+    "band": "Good",
     "chandra_bala": "Neutral",
-    "chogadiya_label": "Kaal (Inauspicious)",
-    "event_navamsha": "Scorpio",
-    "event_navamsha_suitable": false,
+    "chogadiya_label": "Amrit (Highly Auspicious)",
+    "event_navamsha": "Cancer",
+    "event_navamsha_suitable": true,
     "factors": [
       {
         "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
@@ -69,12 +69,12 @@
         "name": "Inauspicious periods"
       },
       {
-        "detail": "Janma \u2014 unfavourable.",
-        "impact": "negative",
+        "detail": "Paramitra \u2014 favourable.",
+        "impact": "positive",
         "name": "Tara Bala"
       },
       {
-        "detail": "Shukla Ekadashi, Siddhi yoga \u2014 suitable.",
+        "detail": "Shukla Dashami, Siddhi yoga \u2014 suitable.",
         "impact": "positive",
         "name": "Panchanga"
       },
@@ -89,42 +89,110 @@
         "name": "Lagna lord house"
       },
       {
-        "detail": "Within Brahma Muhurtha.",
+        "detail": "Amrit (Highly Auspicious).",
         "impact": "positive",
-        "name": "Muhurta"
+        "name": "Chogadiya"
+      },
+      {
+        "detail": "Navamsa lagna Cancer suits the activity.",
+        "impact": "positive",
+        "name": "Event Navamsha"
       }
     ],
     "hard_gate_failed": false,
-    "hora_lord": "Venus",
-    "in_auspicious_muhurta": "Brahma Muhurtha",
+    "hora_lord": "Saturn",
+    "in_auspicious_muhurta": null,
     "in_durmuhurtam": false,
     "in_gulika": false,
     "in_rahu_kala": false,
     "in_varjyam": false,
     "in_yamaganda": false,
-    "instant": "2026-05-26 05:00",
+    "instant": "2026-05-26 04:00",
     "lagna_lord": "Mars",
     "lagna_lord_dignity": "moolatrikona",
     "lagna_lord_house": 1,
     "lagna_sign": "Aries",
     "panchanga_suitable": true,
-    "score": 0.63,
-    "score_100": 63,
-    "tara_bala": "Janma",
-    "tithi": "Shukla Ekadashi",
+    "score": 0.73,
+    "score_100": 73,
+    "tara_bala": "Paramitra",
+    "tithi": "Shukla Dashami",
     "yoga": "Siddhi"
   },
   "best_window": {
-    "end": "05:01",
+    "end": "04:01",
     "label": "Best window for generic",
-    "start": "05:00"
+    "start": "04:00"
   },
-  "clearance_summary": "Clear of Rahu Kala, Yamaganda and Gulika. Panchanga: Shukla Ekadashi, yoga Siddhi \u2014 suitable. Tara Bala: Janma; Chandra Bala: Neutral. Rising Aries (lord Mars) in the 1st, moolatrikona. Event Navamsha lagna Scorpio (not specially indicated for generic).",
+  "clearance_summary": "Clear of Rahu Kala, Yamaganda and Gulika. Panchanga: Shukla Dashami, yoga Siddhi \u2014 suitable. Tara Bala: Paramitra; Chandra Bala: Neutral. Rising Aries (lord Mars) in the 1st, moolatrikona. Event Navamsha lagna Cancer (suitable for generic).",
   "top_samples": [
+    {
+      "band": "Good",
+      "chandra_bala": "Neutral",
+      "chogadiya_label": "Amrit (Highly Auspicious)",
+      "event_navamsha": "Cancer",
+      "event_navamsha_suitable": true,
+      "factors": [
+        {
+          "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
+          "impact": "positive",
+          "name": "Inauspicious periods"
+        },
+        {
+          "detail": "Paramitra \u2014 favourable.",
+          "impact": "positive",
+          "name": "Tara Bala"
+        },
+        {
+          "detail": "Shukla Dashami, Siddhi yoga \u2014 suitable.",
+          "impact": "positive",
+          "name": "Panchanga"
+        },
+        {
+          "detail": "Lord Mars moolatrikona.",
+          "impact": "positive",
+          "name": "Lagna lord dignity"
+        },
+        {
+          "detail": "Lord in the 1st (kendra/trikona).",
+          "impact": "positive",
+          "name": "Lagna lord house"
+        },
+        {
+          "detail": "Amrit (Highly Auspicious).",
+          "impact": "positive",
+          "name": "Chogadiya"
+        },
+        {
+          "detail": "Navamsa lagna Cancer suits the activity.",
+          "impact": "positive",
+          "name": "Event Navamsha"
+        }
+      ],
+      "hard_gate_failed": false,
+      "hora_lord": "Saturn",
+      "in_auspicious_muhurta": null,
+      "in_durmuhurtam": false,
+      "in_gulika": false,
+      "in_rahu_kala": false,
+      "in_varjyam": false,
+      "in_yamaganda": false,
+      "instant": "2026-05-26 04:00",
+      "lagna_lord": "Mars",
+      "lagna_lord_dignity": "moolatrikona",
+      "lagna_lord_house": 1,
+      "lagna_sign": "Aries",
+      "panchanga_suitable": true,
+      "score": 0.73,
+      "score_100": 73,
+      "tara_bala": "Paramitra",
+      "tithi": "Shukla Dashami",
+      "yoga": "Siddhi"
+    },
     {
       "band": "Fair",
       "chandra_bala": "Neutral",
-      "chogadiya_label": "Kaal (Inauspicious)",
+      "chogadiya_label": "Chara (Auspicious)",
       "event_navamsha": "Scorpio",
       "event_navamsha_suitable": false,
       "factors": [
@@ -139,7 +207,7 @@
           "name": "Tara Bala"
         },
         {
-          "detail": "Shukla Ekadashi, Siddhi yoga \u2014 suitable.",
+          "detail": "Shukla Dashami, Siddhi yoga \u2014 suitable.",
           "impact": "positive",
           "name": "Panchanga"
         },
@@ -157,10 +225,15 @@
           "detail": "Within Brahma Muhurtha.",
           "impact": "positive",
           "name": "Muhurta"
+        },
+        {
+          "detail": "Chara (Auspicious).",
+          "impact": "positive",
+          "name": "Chogadiya"
         }
       ],
       "hard_gate_failed": false,
-      "hora_lord": "Venus",
+      "hora_lord": "Jupiter",
       "in_auspicious_muhurta": "Brahma Muhurtha",
       "in_durmuhurtam": false,
       "in_gulika": false,
@@ -173,131 +246,10 @@
       "lagna_lord_house": 1,
       "lagna_sign": "Aries",
       "panchanga_suitable": true,
-      "score": 0.63,
-      "score_100": 63,
+      "score": 0.71,
+      "score_100": 71,
       "tara_bala": "Janma",
-      "tithi": "Shukla Ekadashi",
-      "yoga": "Siddhi"
-    },
-    {
-      "band": "Good",
-      "chandra_bala": "Neutral",
-      "chogadiya_label": "Shubh (Auspicious)",
-      "event_navamsha": "Libra",
-      "event_navamsha_suitable": true,
-      "factors": [
-        {
-          "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
-          "impact": "positive",
-          "name": "Inauspicious periods"
-        },
-        {
-          "detail": "Paramitra \u2014 favourable.",
-          "impact": "positive",
-          "name": "Tara Bala"
-        },
-        {
-          "detail": "Shukla Ekadashi, Siddhi yoga \u2014 suitable.",
-          "impact": "positive",
-          "name": "Panchanga"
-        },
-        {
-          "detail": "Within Vijaya Muhurtha (Night).",
-          "impact": "positive",
-          "name": "Muhurta"
-        },
-        {
-          "detail": "Shubh (Auspicious).",
-          "impact": "positive",
-          "name": "Chogadiya"
-        },
-        {
-          "detail": "Navamsa lagna Libra suits the activity.",
-          "impact": "positive",
-          "name": "Event Navamsha"
-        }
-      ],
-      "hard_gate_failed": false,
-      "hora_lord": "Moon",
-      "in_auspicious_muhurta": "Vijaya Muhurtha (Night)",
-      "in_durmuhurtam": false,
-      "in_gulika": false,
-      "in_rahu_kala": false,
-      "in_varjyam": false,
-      "in_yamaganda": false,
-      "instant": "2026-05-26 00:00",
-      "lagna_lord": "Saturn",
-      "lagna_lord_dignity": "neutral",
-      "lagna_lord_house": 2,
-      "lagna_sign": "Aquarius",
-      "panchanga_suitable": true,
-      "score": 0.61,
-      "score_100": 61,
-      "tara_bala": "Paramitra",
-      "tithi": "Shukla Ekadashi",
-      "yoga": "Siddhi"
-    },
-    {
-      "band": "Fair",
-      "chandra_bala": "Neutral",
-      "chogadiya_label": "Chara (Auspicious)",
-      "event_navamsha": "Virgo",
-      "event_navamsha_suitable": true,
-      "factors": [
-        {
-          "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
-          "impact": "positive",
-          "name": "Inauspicious periods"
-        },
-        {
-          "detail": "Paramitra \u2014 favourable.",
-          "impact": "positive",
-          "name": "Tara Bala"
-        },
-        {
-          "detail": "Shukla Ekadashi, Siddhi yoga \u2014 suitable.",
-          "impact": "positive",
-          "name": "Panchanga"
-        },
-        {
-          "detail": "Lord Jupiter enemy.",
-          "impact": "negative",
-          "name": "Lagna lord dignity"
-        },
-        {
-          "detail": "Lord in the 4th (kendra/trikona).",
-          "impact": "positive",
-          "name": "Lagna lord house"
-        },
-        {
-          "detail": "Chara (Auspicious).",
-          "impact": "positive",
-          "name": "Chogadiya"
-        },
-        {
-          "detail": "Navamsa lagna Virgo suits the activity.",
-          "impact": "positive",
-          "name": "Event Navamsha"
-        }
-      ],
-      "hard_gate_failed": false,
-      "hora_lord": "Jupiter",
-      "in_auspicious_muhurta": null,
-      "in_durmuhurtam": false,
-      "in_gulika": false,
-      "in_rahu_kala": false,
-      "in_varjyam": false,
-      "in_yamaganda": false,
-      "instant": "2026-05-26 02:00",
-      "lagna_lord": "Jupiter",
-      "lagna_lord_dignity": "enemy",
-      "lagna_lord_house": 4,
-      "lagna_sign": "Pisces",
-      "panchanga_suitable": true,
-      "score": 0.55,
-      "score_100": 55,
-      "tara_bala": "Paramitra",
-      "tithi": "Shukla Ekadashi",
+      "tithi": "Shukla Dashami",
       "yoga": "Siddhi"
     },
     {
@@ -367,6 +319,64 @@
       "tara_bala": "Janma",
       "tithi": "Shukla Ekadashi",
       "yoga": "Siddhi"
+    },
+    {
+      "band": "Fair",
+      "chandra_bala": "Neutral",
+      "chogadiya_label": "Labh (Auspicious)",
+      "event_navamsha": "Libra",
+      "event_navamsha_suitable": true,
+      "factors": [
+        {
+          "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
+          "impact": "positive",
+          "name": "Inauspicious periods"
+        },
+        {
+          "detail": "Paramitra \u2014 favourable.",
+          "impact": "positive",
+          "name": "Tara Bala"
+        },
+        {
+          "detail": "Shukla Dashami, Vajra yoga \u2014 Rikta tithi, Amavasya or avoided yoga.",
+          "impact": "negative",
+          "name": "Panchanga"
+        },
+        {
+          "detail": "Within Vijaya Muhurtha (Night).",
+          "impact": "positive",
+          "name": "Muhurta"
+        },
+        {
+          "detail": "Labh (Auspicious).",
+          "impact": "positive",
+          "name": "Chogadiya"
+        },
+        {
+          "detail": "Navamsa lagna Libra suits the activity.",
+          "impact": "positive",
+          "name": "Event Navamsha"
+        }
+      ],
+      "hard_gate_failed": false,
+      "hora_lord": "Sun",
+      "in_auspicious_muhurta": "Vijaya Muhurtha (Night)",
+      "in_durmuhurtam": false,
+      "in_gulika": false,
+      "in_rahu_kala": false,
+      "in_varjyam": false,
+      "in_yamaganda": false,
+      "instant": "2026-05-26 00:00",
+      "lagna_lord": "Saturn",
+      "lagna_lord_dignity": "neutral",
+      "lagna_lord_house": 2,
+      "lagna_sign": "Aquarius",
+      "panchanga_suitable": false,
+      "score": 0.51,
+      "score_100": 51,
+      "tara_bala": "Paramitra",
+      "tithi": "Shukla Dashami",
+      "yoga": "Vajra"
     },
     {
       "band": "Fair",
@@ -487,117 +497,6 @@
     {
       "band": "Fair",
       "chandra_bala": "Neutral",
-      "chogadiya_label": "Amrit (Highly Auspicious)",
-      "event_navamsha": "Pisces",
-      "event_navamsha_suitable": true,
-      "factors": [
-        {
-          "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
-          "impact": "positive",
-          "name": "Inauspicious periods"
-        },
-        {
-          "detail": "Paramitra \u2014 favourable.",
-          "impact": "positive",
-          "name": "Tara Bala"
-        },
-        {
-          "detail": "Shukla Ekadashi, Siddhi yoga \u2014 suitable.",
-          "impact": "positive",
-          "name": "Panchanga"
-        },
-        {
-          "detail": "Amrit (Highly Auspicious).",
-          "impact": "positive",
-          "name": "Chogadiya"
-        },
-        {
-          "detail": "Navamsa lagna Pisces suits the activity.",
-          "impact": "positive",
-          "name": "Event Navamsha"
-        }
-      ],
-      "hard_gate_failed": false,
-      "hora_lord": "Saturn",
-      "in_auspicious_muhurta": null,
-      "in_durmuhurtam": false,
-      "in_gulika": false,
-      "in_rahu_kala": false,
-      "in_varjyam": false,
-      "in_yamaganda": false,
-      "instant": "2026-05-26 01:00",
-      "lagna_lord": "Saturn",
-      "lagna_lord_dignity": "neutral",
-      "lagna_lord_house": 2,
-      "lagna_sign": "Aquarius",
-      "panchanga_suitable": true,
-      "score": 0.48,
-      "score_100": 48,
-      "tara_bala": "Paramitra",
-      "tithi": "Shukla Ekadashi",
-      "yoga": "Siddhi"
-    },
-    {
-      "band": "Fair",
-      "chandra_bala": "Neutral",
-      "chogadiya_label": "Chara (Auspicious)",
-      "event_navamsha": "Aquarius",
-      "event_navamsha_suitable": false,
-      "factors": [
-        {
-          "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
-          "impact": "positive",
-          "name": "Inauspicious periods"
-        },
-        {
-          "detail": "Paramitra \u2014 favourable.",
-          "impact": "positive",
-          "name": "Tara Bala"
-        },
-        {
-          "detail": "Shukla Ekadashi, Siddhi yoga \u2014 suitable.",
-          "impact": "positive",
-          "name": "Panchanga"
-        },
-        {
-          "detail": "Lord Jupiter enemy.",
-          "impact": "negative",
-          "name": "Lagna lord dignity"
-        },
-        {
-          "detail": "Lord in the 4th (kendra/trikona).",
-          "impact": "positive",
-          "name": "Lagna lord house"
-        },
-        {
-          "detail": "Chara (Auspicious).",
-          "impact": "positive",
-          "name": "Chogadiya"
-        }
-      ],
-      "hard_gate_failed": false,
-      "hora_lord": "Mars",
-      "in_auspicious_muhurta": null,
-      "in_durmuhurtam": false,
-      "in_gulika": false,
-      "in_rahu_kala": false,
-      "in_varjyam": false,
-      "in_yamaganda": false,
-      "instant": "2026-05-26 03:00",
-      "lagna_lord": "Jupiter",
-      "lagna_lord_dignity": "enemy",
-      "lagna_lord_house": 4,
-      "lagna_sign": "Pisces",
-      "panchanga_suitable": true,
-      "score": 0.47,
-      "score_100": 47,
-      "tara_bala": "Paramitra",
-      "tithi": "Shukla Ekadashi",
-      "yoga": "Siddhi"
-    },
-    {
-      "band": "Fair",
-      "chandra_bala": "Neutral",
       "chogadiya_label": "Labh (Auspicious)",
       "event_navamsha": "Taurus",
       "event_navamsha_suitable": true,
@@ -657,6 +556,127 @@
       "tara_bala": "Janma",
       "tithi": "Shukla Ekadashi",
       "yoga": "Siddhi"
+    },
+    {
+      "band": "Fair",
+      "chandra_bala": "Neutral",
+      "chogadiya_label": "Shubh (Auspicious)",
+      "event_navamsha": "Virgo",
+      "event_navamsha_suitable": true,
+      "factors": [
+        {
+          "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
+          "impact": "positive",
+          "name": "Inauspicious periods"
+        },
+        {
+          "detail": "Paramitra \u2014 favourable.",
+          "impact": "positive",
+          "name": "Tara Bala"
+        },
+        {
+          "detail": "Shukla Dashami, Vajra yoga \u2014 Rikta tithi, Amavasya or avoided yoga.",
+          "impact": "negative",
+          "name": "Panchanga"
+        },
+        {
+          "detail": "Lord Jupiter enemy.",
+          "impact": "negative",
+          "name": "Lagna lord dignity"
+        },
+        {
+          "detail": "Lord in the 4th (kendra/trikona).",
+          "impact": "positive",
+          "name": "Lagna lord house"
+        },
+        {
+          "detail": "Shubh (Auspicious).",
+          "impact": "positive",
+          "name": "Chogadiya"
+        },
+        {
+          "detail": "Navamsa lagna Virgo suits the activity.",
+          "impact": "positive",
+          "name": "Event Navamsha"
+        }
+      ],
+      "hard_gate_failed": false,
+      "hora_lord": "Mercury",
+      "in_auspicious_muhurta": null,
+      "in_durmuhurtam": false,
+      "in_gulika": false,
+      "in_rahu_kala": false,
+      "in_varjyam": false,
+      "in_yamaganda": false,
+      "instant": "2026-05-26 02:00",
+      "lagna_lord": "Jupiter",
+      "lagna_lord_dignity": "enemy",
+      "lagna_lord_house": 4,
+      "lagna_sign": "Pisces",
+      "panchanga_suitable": false,
+      "score": 0.45,
+      "score_100": 45,
+      "tara_bala": "Paramitra",
+      "tithi": "Shukla Dashami",
+      "yoga": "Vajra"
+    },
+    {
+      "band": "Fair",
+      "chandra_bala": "Neutral",
+      "chogadiya_label": "Shubh (Auspicious)",
+      "event_navamsha": "Aquarius",
+      "event_navamsha_suitable": false,
+      "factors": [
+        {
+          "detail": "Clear of Rahu Kala, Yamaganda and Gulika.",
+          "impact": "positive",
+          "name": "Inauspicious periods"
+        },
+        {
+          "detail": "Paramitra \u2014 favourable.",
+          "impact": "positive",
+          "name": "Tara Bala"
+        },
+        {
+          "detail": "Shukla Dashami, Vajra yoga \u2014 Rikta tithi, Amavasya or avoided yoga.",
+          "impact": "negative",
+          "name": "Panchanga"
+        },
+        {
+          "detail": "Lord Jupiter enemy.",
+          "impact": "negative",
+          "name": "Lagna lord dignity"
+        },
+        {
+          "detail": "Lord in the 4th (kendra/trikona).",
+          "impact": "positive",
+          "name": "Lagna lord house"
+        },
+        {
+          "detail": "Shubh (Auspicious).",
+          "impact": "positive",
+          "name": "Chogadiya"
+        }
+      ],
+      "hard_gate_failed": false,
+      "hora_lord": "Moon",
+      "in_auspicious_muhurta": null,
+      "in_durmuhurtam": false,
+      "in_gulika": false,
+      "in_rahu_kala": false,
+      "in_varjyam": false,
+      "in_yamaganda": false,
+      "instant": "2026-05-26 03:00",
+      "lagna_lord": "Jupiter",
+      "lagna_lord_dignity": "enemy",
+      "lagna_lord_house": 4,
+      "lagna_sign": "Pisces",
+      "panchanga_suitable": false,
+      "score": 0.42,
+      "score_100": 42,
+      "tara_bala": "Paramitra",
+      "tithi": "Shukla Dashami",
+      "yoga": "Vajra"
     },
     {
       "band": "Fair",

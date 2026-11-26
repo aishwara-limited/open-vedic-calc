@@ -211,25 +211,56 @@ def test_lagna_scan_scores_on_the_event_dates_offset(monkeypatch):
     assert {off for _, _, off in calls} == {0.0}
 
 
-def test_lagna_scan_reads_each_day_at_the_event_place_on_that_dates_offset(monkeypatch):
-    """The day's Rahu Kala, chogadiya and muhurtas the scan scores against are
-    computed at the event place, on the offset in force on that date."""
+def _spy_days(monkeypatch) -> list[tuple[str, float, float, float]]:
     ls = _ls()
-    seen: list[tuple[float, float, float]] = []
+    seen: list[tuple[str, float, float, float]] = []
     real = ls.compute_muhurat_for_day
 
     def spy(place, target_date, *a, **kw):
-        seen.append((place.latitude, place.longitude, place.timezone))
+        seen.append((target_date.isoformat(), place.latitude, place.longitude,
+                     place.timezone))
         return real(place, target_date, *a, **kw)
 
     monkeypatch.setattr(ls, "compute_muhurat_for_day", spy)
+    return seen
+
+
+def test_lagna_scan_reads_each_day_at_the_event_place_on_that_dates_offset(monkeypatch):
+    """The day's Rahu Kala, chogadiya and muhurtas the scan scores against are
+    computed at the event place, on the offset in force on that date. The scan
+    reads one neighbouring day beyond each end of the request (the vaara that
+    holds the requested date's pre-dawn hours begins the day before, and the
+    requested date's night runs into the day after)."""
+    seen = _spy_days(monkeypatch)
     r = client.post("/v1/muhurat/lagna-shuddhi", json={
         **SUMMER_BORN_LONDON, **COLOMBO_EVENT,
         "start_date": "2026-12-15", "end_date": "2026-12-15",
         "step_seconds": 3600,
     })
     assert r.status_code == 200, r.text
-    assert seen == [(COLOMBO[0], COLOMBO[1], 5.5)]
+    assert sorted(seen) == [
+        (day, COLOMBO[0], COLOMBO[1], 5.5)
+        for day in ("2026-12-14", "2026-12-15", "2026-12-16")
+    ]
+
+
+def test_lagna_scan_reads_the_days_either_side_of_a_clock_change_on_their_own_offsets(
+    monkeypatch,
+):
+    """Scanning 29 March 2026 in London reads the 28th (the vaara its pre-dawn
+    hours lie in) on GMT, and the 29th and 30th on BST."""
+    seen = _spy_days(monkeypatch)
+    r = client.post("/v1/muhurat/lagna-shuddhi", json={
+        **SUMMER_BORN_LONDON, **LONDON_EVENT,
+        "start_date": "2026-03-29", "end_date": "2026-03-29",
+        "step_seconds": 3600,
+    })
+    assert r.status_code == 200, r.text
+    assert sorted(seen) == [
+        ("2026-03-28", LONDON[0], LONDON[1], 0.0),
+        ("2026-03-29", LONDON[0], LONDON[1], 1.0),
+        ("2026-03-30", LONDON[0], LONDON[1], 1.0),
+    ]
 
 
 def test_lagna_scan_never_offers_a_wall_time_the_clock_change_breaks(monkeypatch):
@@ -304,6 +335,26 @@ def test_family_scan_never_offers_a_wall_time_the_clock_change_breaks(monkeypatc
     assert calls
     assert {off for _, _, off in calls} == {1.0}
     assert min(m for _, m, _ in calls) >= 120
+
+
+def test_family_scan_offers_only_wall_times_every_members_clock_stands_behind(monkeypatch):
+    """Members on different clocks (the module accepts a zone per member):
+    on 29 March 2026 London's 00:00-01:59 is unusable, New York's is not. A
+    New York candidate at 00:30 is still never scored, for any member, because
+    London's clock cannot stand behind it."""
+    calls = _spy_jd(monkeypatch)
+    members = [
+        {"name": "a", "lat": LONDON[0], "lon": LONDON[1], "tz_offset": 0.0,
+         "tz_name": "Europe/London", "birth_nakshatra": None, "birth_moon_sign": None},
+        {"name": "b", "lat": 40.7128, "lon": -74.0060, "tz_offset": -5.0,
+         "tz_name": "America/New_York", "birth_nakshatra": None, "birth_moon_sign": None},
+    ]
+    _ls().scan_family_lagna_shuddhi(
+        members, "2026-03-29", "2026-03-29", activity="generic", step_seconds=300,
+    )
+    assert calls
+    assert min(m for _, m, _ in calls) >= 120
+    assert {off for _, _, off in calls} == {1.0, -4.0}
 
 
 def test_family_scan_keeps_each_members_own_natal_moon(monkeypatch):
@@ -574,6 +625,21 @@ def test_zone_clock_refuses_a_noon_the_zone_repeated():
 @pytest.mark.parametrize("path, body", _SKIPPED_NOON_REQUESTS)
 def test_a_skipped_noon_is_a_structured_422_on_every_route(path, body):
     r = client.post(path, json=body)
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "muhurat_limb_error", detail
+    assert detail["limb"] == "utc_offset", detail
+    assert detail["target_date"] == _SKIPPED_DAY, detail
+
+
+@pytest.mark.parametrize("path, body", _SKIPPED_NOON_REQUESTS[1:])
+def test_a_scan_beside_a_skipped_noon_is_refused_naming_that_date(path, body):
+    """A scan of 2011-12-31 at Apia reads the day before it -- the vaara the
+    31st's pre-dawn hours lie in begins then -- and that day has no noon in
+    the zone, so no offset to read it on. The scan is refused as a scan of
+    that day itself is, naming it, never scored on a guessed offset."""
+    r = client.post(path, json={**body, "start_date": "2011-12-31",
+                                "end_date": "2011-12-31"})
     assert r.status_code == 422, r.text
     detail = r.json()["detail"]
     assert detail["code"] == "muhurat_limb_error", detail
