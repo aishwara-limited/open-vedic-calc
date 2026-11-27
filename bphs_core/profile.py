@@ -102,28 +102,18 @@ def janma_nakshatra(snapshot: ChartSnapshot) -> dict:
 # ---------------------------------------------------------------------------
 
 def mangal_dosha(snapshot: ChartSnapshot) -> dict:
-    """Single-chart Mangal Dosha: checks from lagna and from Moon.
+    """Single-chart Mangal Dosha by BPHS ch. 80 v. 47, through the same
+    checker the pair compatibility uses (compat._mangal_dosha_raw).
 
-    Reuses the pair-compatibility raw checker from compat.py.
+    The verse counts Mars from the lagna only and grades nothing, so no
+    from-Moon check and no severity is served. The partner rule of vv. 48-49
+    needs a second chart and belongs to compat.compute_mangal_dosha.
     """
-    has_d, sev_d, cancel_d = _mangal_dosha_raw(snapshot)
-
-    # Also check from Moon's chart (Moon treated as lagna)
-    moon = snapshot.rasi_chart.get("Moon")
+    has_d, cancel_d = _mangal_dosha_raw(snapshot)
     mars = snapshot.rasi_chart.get("Mars")
-    from_moon = False
-    if moon and mars:
-        # Mars houses from Moon: 1/2/4/7/8/12
-        moon_idx = utils.SIGNS.index(moon.sign)
-        mars_idx = utils.SIGNS.index(mars.sign)
-        mars_house_from_moon = (mars_idx - moon_idx) % 12 + 1
-        from_moon = mars_house_from_moon in {1, 2, 4, 7, 8, 12}
-
     return {
         "present": has_d,
-        "severity": sev_d,
         "cancellation": cancel_d[0] if cancel_d else None,
-        "from_moon": from_moon,
         "mars_house": mars.house if mars else None,
     }
 

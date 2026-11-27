@@ -44,6 +44,9 @@ def test_profile_structure(sample):
     # kalsarp / mangal dosha expose a boolean presence flag either way.
     assert isinstance(body["kalsarp"].get("present"), bool)
     assert isinstance(body["mangal_dosha"].get("present"), bool)
+    # BPHS ch. 80 v. 47 counts from the lagna and grades nothing: no
+    # severity and no from-Moon check are served.
+    assert set(body["mangal_dosha"]) == {"present", "cancellation", "mars_house"}
 
     # numerology radical/destiny are 1–9 digits; name number present.
     num = body["numerology"]
