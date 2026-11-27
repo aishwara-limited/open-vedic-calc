@@ -327,6 +327,18 @@ Maitreya 8's `getVashya` gives both. Classical nadi-dosha cancellations are not
 applied. `tests/test_ashtakoota_classical_tables.py` pins every table cell and
 every nakshatra pada by hand.
 
+Mangal dosha (in `/v1/compat` for each partner, and in `/v1/profile` for one
+chart) follows BPHS ch. 80 vv. 47-49 alone. The dosha is present when Mars is
+in the 1st, 4th, 7th, 8th or 12th house counted from the lagna (v. 47); the 2nd
+house of the southern verse is not used, and nothing is counted from the Moon.
+It is cancelled when a natural benefic of BPHS 3.11 (Jupiter, Venus, the waxing
+Moon, or Mercury when no malefic shares his sign) joins Mars or casts its aspect
+on him (v. 47), or when the partner's chart carries the same uncancelled yoga
+(vv. 48-49). The verses grade nothing, so no severity is served, and the
+popular cancellations (Mars in Aries, Scorpio or Capricorn; an Aries or Scorpio
+lagna or Moon; Mars in the 2nd in Gemini or Virgo) are not applied.
+`tests/test_mangal_dosha_bphs.py` pins every house against every benefic.
+
 ### Errors
 
 Request-validation failures return `422` with `{"detail": [...]}` (the standard

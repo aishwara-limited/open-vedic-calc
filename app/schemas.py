@@ -627,7 +627,7 @@ class ProfileResponse(BaseModel):
     numerology: dict             # {radical, destiny, name}
     favourable: dict             # lucky_number, lucky_metal, lucky_stone, lucky_color, good_years
     janma_nakshatra: dict        # deity, symbol, ruling_planet, tattva, purushartha, pada
-    mangal_dosha: dict           # present, severity, cancellation, from_moon, mars_house
+    mangal_dosha: dict           # present, cancellation, mars_house (BPHS 80.47, from the lagna)
     # The quarterly scan step used for sade_sati_lifetime: period boundaries
     # carry ±precision_days imprecision. Defaulted so clients that parsed this
     # response before the field was added still deserialise correctly.
@@ -963,8 +963,11 @@ class KutaScore(BaseModel):
 
 
 class MangalDoshaResult(BaseModel):
+    """Mangal dosha by BPHS ch. 80 vv. 47-49: ``has_dosha`` is Mars in the
+    1st, 4th, 7th, 8th or 12th from the lagna; ``cancellation`` names the
+    natural benefic that aspects or joins Mars, or the partner's matching
+    yoga, or is empty. The verses grade nothing, so no severity is served."""
     has_dosha: bool
-    severity: Literal["none", "mild", "strong"]
     cancellation: str
 
 

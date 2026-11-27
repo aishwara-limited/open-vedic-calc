@@ -41,6 +41,7 @@ from datetime import date, datetime, timedelta
 from . import utils
 from .chart import ChartSnapshot, PlanetData
 from .dashas import vimshottari_mahadashas
+from .strength import is_benefic
 
 # ---------------------------------------------------------------------------
 # Classical data tables
@@ -444,71 +445,84 @@ def _nadi(nak_a: str, nak_b: str) -> tuple[float, str]:
 @dataclass
 class MangalDoshaInfo:
     has_dosha: bool
-    severity: str  # "none" | "mild" | "strong"
     cancellation: str
 
 
-def _mangal_dosha_raw(snapshot: ChartSnapshot) -> tuple[bool, str, list[str]]:
-    """Returns (has_dosha, severity, cancellation_reasons).
+# BPHS ch. 80 v. 47 (Santhanam numbering): "lagne vyaye sukhe vapi saptame
+# va'shtame kuje, shubha-drig-yoga-hine" - Mars in the lagna, the 12th, the
+# 4th, the 7th or the 8th, counted from the lagna, without the aspect or the
+# conjunction of a benefic. Five houses; the 2nd belongs to a separate southern
+# verse and is not served.
+MANGAL_DOSHA_HOUSES = frozenset({1, 4, 7, 8, 12})
 
-    What is served, counted in whole-sign houses from the lagna:
+# The natural benefics of BPHS 3.11, in the order their reasons are listed.
+# Whether each one IS benefic in a given chart (the Moon waxing, Mercury
+# unassociated with a malefic) is decided by strength.is_benefic.
+_NATURAL_BENEFICS = ("Jupiter", "Venus", "Mercury", "Moon")
 
-    * the dosha is present when Mars is in the 1st, 2nd, 4th, 7th, 8th or
-      12th house; severity is "strong" in the 8th or 12th, "mild" otherwise;
-    * cancellation reasons are collected in this order, and callers serve
-      only the first: Mars in Aries, Scorpio or Capricorn; Jupiter joining
-      Mars (same sign) or Jupiter aspecting Mars; a lagna or Moon sign of
-      Aries or Scorpio; Mars in the 2nd house in Gemini or Virgo.
 
-    The house set, the severity grade and the list of cancellations are this
-    engine's existing choices and carry no verse citation here. What IS
-    cited is the direction of the Jupiter aspect, which follows the graha
-    drishti rule of BPHS ch. 26, vv. 2-5.
+def _mangal_dosha_raw(snapshot: ChartSnapshot) -> tuple[bool, list[str]]:
+    """Returns (has_dosha, cancellation_reasons), by BPHS ch. 80 v. 47 alone.
+
+    ``has_dosha`` is True when Mars is in the 1st, 4th, 7th, 8th or 12th
+    whole-sign house from the lagna. The verse grades nothing, so no severity
+    is returned, and it counts from the lagna only.
+
+    The same verse forms the yoga only "shubha-drig-yoga-hine", without a
+    benefic's aspect or conjunction, so each natural benefic of BPHS 3.11
+    (``strength.is_benefic``: Jupiter, Venus, the waxing Moon, Mercury unless
+    he shares his sign with a malefic) that joins Mars (same sign) or aspects
+    him gives a cancellation reason, listed Jupiter, Venus, Mercury, Moon;
+    callers serve the first. Mercury joining Mars is therefore never a
+    cancellation: Mars is in his sign. The aspect is the one the benefic casts
+    ON Mars: ``PlanetData.aspects`` lists the grahas a planet aspects
+    (chart._find_aspects), so the benefic's own list is read (BPHS ch. 26,
+    vv. 2-5: every graha the 7th from itself, Jupiter also the 5th and 9th).
     """
     mars = snapshot.rasi_chart.get("Mars")
-    if mars is None:
-        return False, "none", []
+    if mars is None or mars.house not in MANGAL_DOSHA_HOUSES:
+        return False, []
 
-    if mars.house not in {1, 2, 4, 7, 8, 12}:
-        return False, "none", []
-
-    severity = "strong" if mars.house in {8, 12} else "mild"
-
+    # The unrounded longitudes the rasi chart always carries, as strength.py
+    # reads them for the same BPHS 3.11 test.
+    longitudes = {name: pd.longitude_abs for name, pd in snapshot.rasi_chart.items()}
     reasons: list[str] = []
-    if mars.sign in ("Aries", "Scorpio", "Capricorn"):
-        reasons.append(f"Mars in {mars.sign} (own sign or exalted) cancels the dosha.")
-    # The influence must run FROM Jupiter TO Mars. PlanetData.aspects lists the
-    # grahas a planet aspects (chart._find_aspects), so the test reads
-    # Jupiter's list: Mars must fall in the 5th, 7th or 9th house counted from
-    # Jupiter (BPHS ch. 26 Graha Drishti, vv. 2-5: every graha fully aspects
-    # the 7th from itself, Jupiter also the 5th and 9th). Mars's own list
-    # holds the grahas MARS aspects (his 4th, 7th, 8th) and is not read here.
-    jupiter = snapshot.rasi_chart.get("Jupiter")
-    if "Jupiter" in mars.conjunctions or (jupiter is not None and "Mars" in jupiter.aspects):
-        reasons.append("Jupiter's influence on Mars cancels the Mangal Dosha.")
-    moon = snapshot.rasi_chart.get("Moon")
-    if snapshot.lagna in ("Aries", "Scorpio") or (moon and moon.sign in ("Aries", "Scorpio")):
-        reasons.append("Mars-ruled lagna or Moon sign cancels the Mangal Dosha.")
-    if mars.house == 2 and mars.sign in ("Gemini", "Virgo"):
-        reasons.append(f"Mars in 2nd house in {mars.sign} cancels the dosha.")
+    for graha in _NATURAL_BENEFICS:
+        pd = snapshot.rasi_chart.get(graha)
+        if pd is None:
+            continue
+        if graha in mars.conjunctions:
+            influence = "joins Mars, and a natural benefic's conjunction"
+        elif "Mars" in pd.aspects:
+            influence = "aspects Mars, and a natural benefic's aspect"
+        else:
+            continue
+        if is_benefic(graha, longitudes):
+            reasons.append(f"{graha} {influence} cancels the Mangal Dosha.")
+    return True, reasons
 
-    return True, severity, reasons
+
+_MUTUAL_CANCELLATION = "Both charts carry Mangal Dosha, which mutually cancels the affliction."
 
 
 def compute_mangal_dosha(snap_a: ChartSnapshot, snap_b: ChartSnapshot) -> tuple[MangalDoshaInfo, MangalDoshaInfo]:
-    has_a, sev_a, cancel_a = _mangal_dosha_raw(snap_a)
-    has_b, sev_b, cancel_b = _mangal_dosha_raw(snap_b)
+    """Each partner's Mangal dosha, with the partner rule of BPHS ch. 80
+    vv. 48-49: the yoga is cancelled when the other chart carries the same
+    yoga. A chart carries the yoga only when Mars is in one of the five houses
+    AND no benefic cancels it (v. 47), so a partner whose Mars a benefic
+    aspects or joins matches nothing."""
+    has_a, cancel_a = _mangal_dosha_raw(snap_a)
+    has_b, cancel_b = _mangal_dosha_raw(snap_b)
 
-    # Mutual cancellation takes priority
-    if has_a and has_b:
-        cancel_a = ["Both charts carry Mangal Dosha, which mutually cancels the affliction."]
-        cancel_b = ["Both charts carry Mangal Dosha, which mutually cancels the affliction."]
+    yoga_a = has_a and not cancel_a
+    yoga_b = has_b and not cancel_b
+    if yoga_a and yoga_b:
+        cancel_a = [_MUTUAL_CANCELLATION]
+        cancel_b = [_MUTUAL_CANCELLATION]
 
     return (
-        MangalDoshaInfo(has_dosha=has_a, severity=sev_a if has_a else "none",
-                        cancellation=cancel_a[0] if cancel_a else ""),
-        MangalDoshaInfo(has_dosha=has_b, severity=sev_b if has_b else "none",
-                        cancellation=cancel_b[0] if cancel_b else ""),
+        MangalDoshaInfo(has_dosha=has_a, cancellation=cancel_a[0] if cancel_a else ""),
+        MangalDoshaInfo(has_dosha=has_b, cancellation=cancel_b[0] if cancel_b else ""),
     )
 
 

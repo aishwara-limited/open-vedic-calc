@@ -4,12 +4,13 @@ The endpoint-level ``/v1/compat`` tests only ever drive two fixed charts, so the
 per-kuta scoring functions exercise just one branch each. These tests call every
 kuta calculator (``_varna``, ``_vasya``, ``_tara``, ``_yoni``, ``_graha_maitri``,
 ``_gana``, ``_bhakoot``, ``_nadi``) directly with crafted sign/nakshatra inputs
-to cover all score tiers and interpretation strings, plus the Mangal-dosha
-cancellation rules, the nakshatra-compatibility prose branches, and every
-``composite_strength_notes`` rank combination.
+to cover all score tiers and interpretation strings, plus the
+nakshatra-compatibility prose branches and every ``composite_strength_notes``
+rank combination. The Mangal-dosha rule (BPHS ch. 80 vv. 47-49) is tested in
+``tests/test_mangal_dosha_bphs.py``.
 
-Mangal-dosha and composite-strength tests build a minimal ``ChartSnapshot`` the
-same way ``tests/test_calc_regressions.py`` does.
+Composite-strength tests build a minimal ``ChartSnapshot`` the same way
+``tests/test_calc_regressions.py`` does.
 
 Branch anchors below are named by function in bphs_core/compat.py:
 
@@ -374,114 +375,6 @@ class TestNadi:
         score, interp = compat._nadi("Ashwini", "Bharani")
         assert score == 8.0
         assert "fully compatible" in interp
-
-
-# ---------------------------------------------------------------------------
-# Mangal dosha
-# ---------------------------------------------------------------------------
-
-class TestMangalDosha:
-    def test_no_mars_no_dosha(self):
-        # Chart with no Mars -> _mangal_dosha_raw: `mars is None` guard -> (False, none, [])
-        has, sev, reasons = compat._mangal_dosha_raw(_mock_chart({"Sun": {}}))
-        assert has is False
-        assert sev == "none"
-        assert reasons == []
-
-    def test_mars_benign_house_no_dosha(self):
-        # Mars in 3rd house -> not a dosha house
-        snap = _mock_chart({"Mars": {"sign": "Gemini", "house": 3}})
-        has, sev, reasons = compat._mangal_dosha_raw(snap)
-        assert has is False
-        assert sev == "none"
-
-    def test_mars_strong_dosha_8th(self):
-        snap = _mock_chart({"Mars": {"sign": "Gemini", "house": 8}})
-        has, sev, _ = compat._mangal_dosha_raw(snap)
-        assert has is True
-        assert sev == "strong"
-
-    def test_dosha_without_lagna_or_moon_cancellation(self):
-        """False arc of _mangal_dosha_raw's Mars-ruled lagna-or-Moon cancellation
-        check: a dosha chart whose lagna and Moon are neither Aries nor Scorpio
-        skips that cancellation and falls through to the 2nd-house check."""
-        snap = _mock_chart(
-            {
-                "Mars": {"sign": "Gemini", "house": 7},   # mild dosha, no own-sign
-                "Moon": {"sign": "Taurus", "house": 1},   # not Aries/Scorpio
-            },
-            lagna="Taurus", lagna_lord="Venus",           # not Aries/Scorpio
-        )
-        has, sev, reasons = compat._mangal_dosha_raw(snap)
-        assert has is True
-        assert sev == "mild"
-        # none of the cancellation rules apply -> no reasons recorded
-        assert reasons == []
-
-    def test_mars_mild_dosha_with_own_sign_cancellation(self):
-        snap = _mock_chart({"Mars": {"sign": "Aries", "house": 7}})
-        has, sev, reasons = compat._mangal_dosha_raw(snap)
-        assert has is True
-        assert sev == "mild"
-        assert any("own sign or exalted" in r for r in reasons)
-
-    def test_jupiter_aspect_cancellation(self):
-        """Jupiter in Libra casts its 9th aspect on Mars in Gemini, so Mars
-        appears in JUPITER's aspect list (the grahas Jupiter aspects)."""
-        snap = _mock_chart(
-            {
-                "Mars": {"sign": "Gemini", "house": 7},
-                "Jupiter": {"sign": "Libra", "house": 11, "aspects": ["Mars"]},
-            },
-            lagna="Sagittarius", lagna_lord="Jupiter",
-        )
-        _, _, reasons = compat._mangal_dosha_raw(snap)
-        assert reasons == ["Jupiter's influence on Mars cancels the Mangal Dosha."]
-
-    def test_mars_aspecting_jupiter_does_not_cancel(self):
-        """Mars in Gemini casts its 8th aspect on Jupiter in Capricorn, but
-        Jupiter (Gemini is the 6th sign from Capricorn) does not aspect Mars:
-        the aspect Mars gives is not Jupiter's influence on Mars."""
-        snap = _mock_chart(
-            {
-                "Mars": {"sign": "Gemini", "house": 7, "aspects": ["Jupiter"]},
-                "Jupiter": {"sign": "Capricorn", "house": 2, "aspects": []},
-            },
-            lagna="Sagittarius", lagna_lord="Jupiter",
-        )
-        _, _, reasons = compat._mangal_dosha_raw(snap)
-        assert reasons == []
-
-    def test_lagna_or_moon_cancellation(self):
-        snap = _mock_chart(
-            {"Mars": {"sign": "Gemini", "house": 4}},
-            lagna="Aries",
-        )
-        _, _, reasons = compat._mangal_dosha_raw(snap)
-        assert any("lagna or Moon sign" in r for r in reasons)
-
-    def test_second_house_gemini_cancellation(self):
-        # Mars in 2nd house in Gemini -> _mangal_dosha_raw: `mars.house == 2`
-        # Gemini/Virgo cancellation branch
-        snap = _mock_chart({"Mars": {"sign": "Gemini", "house": 2}})
-        _, _, reasons = compat._mangal_dosha_raw(snap)
-        assert any("2nd house" in r for r in reasons)
-
-    def test_mutual_cancellation(self):
-        snap_a = _mock_chart({"Mars": {"sign": "Gemini", "house": 8}})
-        snap_b = _mock_chart({"Mars": {"sign": "Cancer", "house": 12}})
-        info_a, info_b = compat.compute_mangal_dosha(snap_a, snap_b)
-        assert info_a.has_dosha and info_b.has_dosha
-        assert "mutually cancels" in info_a.cancellation
-        assert "mutually cancels" in info_b.cancellation
-
-    def test_one_sided_dosha_no_mutual(self):
-        snap_a = _mock_chart({"Mars": {"sign": "Gemini", "house": 7}})
-        snap_b = _mock_chart({"Mars": {"sign": "Gemini", "house": 3}})  # no dosha
-        info_a, info_b = compat.compute_mangal_dosha(snap_a, snap_b)
-        assert info_a.has_dosha is True
-        assert info_b.has_dosha is False
-        assert info_b.severity == "none"
 
 
 # ---------------------------------------------------------------------------

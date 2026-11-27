@@ -914,12 +914,10 @@ def compat_endpoint(req: CompatRequest):
     ]
     dosha_a = MangalDoshaResult(
         has_dosha=result.mangal_dosha_a.has_dosha,
-        severity=result.mangal_dosha_a.severity,
         cancellation=result.mangal_dosha_a.cancellation,
     )
     dosha_b = MangalDoshaResult(
         has_dosha=result.mangal_dosha_b.has_dosha,
-        severity=result.mangal_dosha_b.severity,
         cancellation=result.mangal_dosha_b.cancellation,
     )
     overlaps = [

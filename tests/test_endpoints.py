@@ -709,7 +709,6 @@ def test_family_lagna_shuddhi_best_window_shape():
 
 _COMPAT_REQ = {"person_a": SAMPLE_A, "person_b": SAMPLE_B}
 
-_VALID_SEVERITY = {"none", "mild", "strong"}
 _VALID_QUALITY  = {"favorable", "neutral", "challenging"}
 _KUTA_NAMES     = ["varna", "vasya", "tara", "yoni", "graha_maitri", "gana", "bhakoot", "nadi"]
 _KUTA_MAX       = {"varna": 1, "vasya": 2, "tara": 3, "yoni": 4,
@@ -766,11 +765,12 @@ def test_compat_mangal_dosha_well_formed():
     body = r.json()
     for key in ("mangal_dosha_a", "mangal_dosha_b"):
         d = body[key]
+        # BPHS ch. 80 v. 47 grades nothing: no severity field is served.
+        assert set(d) == {"has_dosha", "cancellation"}
         assert isinstance(d["has_dosha"], bool)
-        assert d["severity"] in _VALID_SEVERITY
         assert isinstance(d["cancellation"], str)
         if not d["has_dosha"]:
-            assert d["severity"] == "none"
+            assert d["cancellation"] == ""
 
 
 def test_compat_dasha_overlaps_well_formed():
